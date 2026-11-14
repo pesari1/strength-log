@@ -1,0 +1,12 @@
+{
+  "name": "strength-log",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Offline iPhone workout log (PWA). No dependencies.",
+  "scripts": {
+    "test": "node --test",
+    "serve": "node tools/serve.mjs",
+    "icons": "node tools/make-icons.mjs"
+  }
+}
