@@ -365,6 +365,34 @@ textarea { resize: vertical; }
 .btn.good { color: var(--good); background: transparent; border-color: color-mix(in srgb, var(--good) 45%, transparent); }
 .tough .seg { width: 150px; }
 
+/* home sessions */
+.quick { display: flex; gap: 12px; flex-wrap: wrap; }
+.mini { display: flex; flex-direction: column; gap: 4px; }
+.step.sm { width: 40px; height: 40px; font-size: 22px; }
+.mini-val { min-width: 54px; text-align: center; font-weight: 800; font-size: 18px; font-variant-numeric: tabular-nums; }
+.chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.chip-set {
+  min-height: 44px;
+  min-width: 52px;
+  padding: 4px 12px;
+  border-radius: 12px;
+  border: 1px solid var(--line);
+  background: var(--surface2);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+.chip-set small { font-size: 11px; font-weight: 600; color: var(--muted); }
+.chip-set.on { background: var(--accent); color: var(--accent-ink); border-color: transparent; }
+.goal { font-size: 14px; color: var(--muted); border-top: 1px solid var(--line); padding-top: 10px; }
+.goal > * + * { margin-top: 4px; }
+.goal b { color: var(--text); }
+.rounds { flex: 1; }
+.card-head input { flex: 1; }
+
 /* rest days / upcoming */
 .rest { background: color-mix(in srgb, var(--good) 12%, var(--surface)); border-color: color-mix(in srgb, var(--good) 40%, transparent); }
 .rest-line { font-size: 18px; }

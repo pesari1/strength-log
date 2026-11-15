@@ -1,9 +1,11 @@
 // Strength Log — screens and interaction.
 import * as L from './logic.js';
+import * as H from './home.js';
+import * as P from './pullups.js';
 import * as db from './db.js';
 
 // Keep in step with CACHE_VERSION in sw.js (bump both when releasing changes).
-const APP_VERSION = '3.0.0';
+const APP_VERSION = '4.0.0';
 
 const $app = document.getElementById('app');
 const $timer = document.getElementById('timer');
@@ -15,7 +17,10 @@ const S = {
   draft: null, // new gym workout in progress (saved to the phone as you go)
   edit: null, // copy of a past gym workout being edited
   editDirty: false,
-  kb: null, // home kettlebell session being logged or edited
+  home: null, // home session being logged or edited
+  puSetup: null, // pull-up setup screen values { max, kg, back }
+  progressArea: 'gym', // gym | home | pullups
+  progressMove: null, // home movement key on the Progress tab
   view: 'home',
   homePick: null, // session picked by hand on Home
   sheet: null, // open bottom sheet
@@ -133,10 +138,11 @@ function render() {
     progress: viewProgress,
     settings: viewSettings,
     workout: viewWorkout,
-    kb: viewKb,
+    homesess: viewHomeSession,
+    pusetup: viewPullupSetup,
     blockstart: viewBlockStart,
   };
-  const showTabs = !['workout', 'kb', 'blockstart'].includes(S.view);
+  const showTabs = !['workout', 'homesess', 'pusetup', 'blockstart'].includes(S.view);
   $app.className = 'view-' + S.view;
   $app.innerHTML = views[S.view]() + (showTabs ? tabBar() : '') + (S.sheet ? viewSheet() : '');
   keepAwake(S.view === 'workout' && !S.edit && !!S.draft);
@@ -211,7 +217,7 @@ function viewHome() {
   const rest = sc.isRestDay
     ? `<section class="card rest">
         <p class="rest-line"><b>${sc.daysSinceLast <= 0 ? 'Trained today' : 'Rest day'}</b> — next: ${nextName}, due ${fmtDue(sc.due)}</p>
-        <button class="link" data-action="kb-new">Optional: home Simple &amp; Sinister ›</button>
+        <button class="link" data-action="home-open" data-v="ss">Optional: home Simple &amp; Sinister ›</button>
       </section>`
     : '';
 
@@ -259,7 +265,8 @@ function viewHome() {
       <h2>${title}</h2>
       ${sc.longBreakNote ? `<p class="note-warn">${esc(sc.longBreakNote)}</p>` : ''}
       ${lifts}
-      <div class="plan-lift opt"><div class="plan-row"><span class="lift-name">Pull-ups</span><span class="plan-sets">optional · 3×5</span></div></div>
+      <div class="plan-lift opt"><div class="plan-row"><span class="lift-name">Pull-ups</span><span class="plan-sets">${esc(pullupLine())}</span></div>
+        ${pullupNotes().map((n) => `<p class="why">${esc(n)}</p>`).join('')}</div>
       <button class="btn ${sc.isRestDay ? '' : 'primary'} big block" data-action="start">${
         S.draft ? 'Start a new workout' : sc.isRestDay ? 'Start anyway' : 'Start'
       }</button>
@@ -275,8 +282,9 @@ function viewHome() {
     ${updateBanner()}${resume}${backup}${rest}
     ${main}
     ${upcoming}
-    <button class="card kb-btn" data-action="kb-new">
-      <div><div class="k1">Home — Simple &amp; Sinister</div><div class="k2">Kettlebell swings &amp; get-ups · doesn't change the gym plan</div></div>
+    <button class="card kb-btn" data-action="home-open">
+      <div><div class="k1">${todaysHome() ? "Continue today's home session" : 'Home session'}</div>
+      <div class="k2">Simple &amp; Sinister, press ladders, bodyweight, pull-ups, custom · doesn't change the gym plan</div></div>
       <span class="chev">›</span>
     </button>
     <p class="muted center small">${
@@ -285,6 +293,263 @@ function viewHome() {
         : 'No workouts yet. Tap Start when you get to the gym.'
     }</p>
   </main>`;
+}
+
+// ---------------------------------------------------------------- pull-up program
+
+function puState() {
+  return P.pullupState(S.workouts, S.settings);
+}
+
+function pullupLine(st = puState()) {
+  if (st.phase === 'setup') return 'optional · set up the program in Settings';
+  if (st.doneToday) return 'done today ✓';
+  if (st.dayOff) return 'day off';
+  if (st.phase === 'ladder') return `optional · today's ladder: ${st.ladder.join(', ')}`;
+  if (st.phase === 'test') return 'max test (after a few rest days)';
+  return 'optional · log freely';
+}
+
+function pullupNotes(st = puState()) {
+  const n = [];
+  if (st.phase === 'ladder' && st.missed && !st.doneToday) n.push('Missed reps last time → same ladder until it is done.');
+  if (st.phase === 'test' && !st.doneToday) n.push('25 sessions done. Take a few rest days, then test your max.');
+  if (st.longBreakNote) n.push(st.longBreakNote);
+  return n;
+}
+
+function lastFreePullups() {
+  const r = P.pullupRecords(S.workouts).filter((x) => x.rec.mode === 'free').pop();
+  return r ? r.rec : null;
+}
+
+/** Pull-up card, used in gym workouts (where = 'gym') and home sessions (where = item index). */
+function pullupCard(rec, where, ownerId) {
+  const st = puState();
+  const home = where !== 'gym';
+  const remove = home
+    ? `<button class="link" data-action="item-remove" data-v="${where}">Remove</button>`
+    : `<button class="link" data-action="pu-remove">Remove</button>`;
+  if (!rec || !rec.mode) {
+    if (st.phase === 'setup') {
+      return `<section class="card"><div class="card-head"><h3>Pull-ups</h3>${home ? remove : ''}</div>
+        <p class="why">Set up your pull-up program first: it asks for your current max.</p>
+        <button class="btn block" data-action="pu-setup">Set up the pull-up program</button></section>`;
+    }
+    return `<button class="add" data-action="pu-add">+ Pull-ups — ${esc(pullupLine(st))}</button>`;
+  }
+  const pfx = home ? `hp.${where}` : 'p';
+  const saved = st.records.find((r) => r.id === ownerId);
+  const wontCount = saved ? !saved.counts : st.doneToday;
+  const head =
+    rec.mode === 'ladder'
+      ? `Ladder: ${rec.ladder.join(', ')}${st.phase === 'ladder' && st.progress && !saved ? ` · ${st.progress}` : ''}`
+      : rec.mode === 'test'
+        ? 'Max test: strict pull-ups, dead hang, full range. Tick the set and set your reps.'
+        : 'Log freely — no program.';
+  const showKg = rec.mode !== 'ladder' || rec.kg > 0;
+  return `<section class="card">
+    <div class="card-head"><h3>Pull-ups</h3>${remove}</div>
+    <p class="why">${esc(head)}</p>
+    ${pullupNotes(st).map((n) => `<p class="why">${esc(n)}</p>`).join('')}
+    ${wontCount ? '<p class="note-warn">Pull-ups were already logged today — this one is saved but won\'t count toward the program.</p>' : ''}
+    ${showKg ? `<div class="group-head"><span class="glabel">Added weight</span>${stepper(home ? `hk.${where}` : 'pk', rec.kg || 0)}</div>` : ''}
+    <div class="sets">${rec.sets.map((s, si) => setBtn(`${pfx}.${si}`, s, rec.ladder ? rec.ladder[si] : null)).join('')}
+      ${rec.mode === 'free' ? `<button class="set" data-action="pu-addset" data-v="${where}" aria-label="Add a set">+</button>` : ''}</div>
+    ${rec.mode === 'free' ? `<button class="link" data-action="pu-test" data-v="${where}">Log a max test instead</button>` : ''}
+  </section>`;
+}
+
+function viewPullupSetup() {
+  const u = S.puSetup;
+  if (!u) return viewHome();
+  const p = P.pickProgram(u.max);
+  const first = p.base ? p.base.join(', ') : null;
+  const mini = (path, val, step, unit) => `<div class="stepper">
+      <button class="step" data-action="pus-step" data-path="${path}" data-v="${-step}" aria-label="Less">−</button>
+      <span class="big-num">${kg(val)}</span><span class="unit">${unit}</span>
+      <button class="step" data-action="pus-step" data-path="${path}" data-v="${step}" aria-label="More">+</button></div>`;
+  return `<header class="top bar">
+      <button class="btn ghost" data-action="pus-back">‹ Back</button>
+      <div class="title"><div class="t">Pull-up program</div><div class="sub">Pavel's Fighter Pullup Program</div></div>
+      <span style="width:60px"></span>
+    </header>
+    <main class="wrap">
+      <section class="card">
+        <h3>Your current max</h3>
+        <p class="why">Strict pull-ups: dead hang, full range.</p>
+        <div class="setting-row"><span class="glabel">Max reps</span>${mini('max', u.max, 1, 'reps')}</div>
+        <div class="setting-row"><span class="glabel">Added weight (optional)</span>${mini('kg', u.kg, 2.5, 'kg')}</div>
+        <p class="why">For strength, Pavel says you can hang weight to bring your reps down to three; the ladders work the same.</p>
+      </section>
+      <section class="card">
+        <div class="eyebrow">Program picked</div>
+        <h3>${esc(p.name)}</h3>
+        <p class="why">${esc(p.about)}</p>
+        ${first ? `<p class="calc">Week 1: 5 sessions, adding ${p.step === 2 ? '2 reps' : '1 rep'} to one more set each session (day off after the 5th) · after 25 sessions, rest a few days and test your max.</p>` : ''}
+      </section>
+      <button class="btn primary big block" data-action="pus-save">Save and start</button>
+    </main>`;
+}
+
+// ---------------------------------------------------------------- home sessions
+
+function todaysHome() {
+  const today = L.localDay(new Date()).getTime();
+  return L.sortByDate(S.workouts.filter((w) => w.kind === 'home' && L.localDay(w.date).getTime() === today)).pop() || null;
+}
+
+function addMove(move) {
+  const h = S.home;
+  if (move !== 'custom' && h.items.some((i) => i.move === move)) return;
+  if (move === 'pullups') {
+    const st = puState();
+    h.items.push(st.phase === 'setup' ? { move } : { move, ...P.newPullupRecord(st, lastFreePullups()) });
+    return;
+  }
+  h.items.push(H.newItem(move, S.workouts, { excludeId: h.id }));
+}
+
+function addPreset(id) {
+  const p = H.PRESETS.find((x) => x.id === id);
+  if (p) p.moves.forEach(addMove);
+  S.homeDirty = true;
+}
+
+/** Opens today's home session if there is one (for practice sets through the day), else a new one. */
+function openHome(preset) {
+  const t = todaysHome();
+  if (t) {
+    const { swings, getups, ...rest } = clone(t);
+    S.home = { ...rest, items: clone(H.homeItems(t)), _editing: true };
+  } else {
+    S.home = { id: L.makeId(), kind: 'home', date: null, items: [], minutes: null, notes: '' };
+  }
+  S.homeBack = 'home';
+  S.homeDirty = false;
+  if (preset) addPreset(preset);
+  go('homesess');
+  if (!S.home.items.length) {
+    S.sheet = { kind: 'presets' };
+    render();
+  }
+}
+
+function miniStep(action, path, val, step, label) {
+  return `<div class="mini"><span class="glabel">${label}</span><div class="stepper">
+    <button class="step sm" data-action="${action}" data-path="${path}" data-v="${-step}" aria-label="Less ${label}">−</button>
+    <span class="mini-val">${val}</span>
+    <button class="step sm" data-action="${action}" data-path="${path}" data-v="${step}" aria-label="More ${label}">+</button></div></div>`;
+}
+
+function homeItemCard(it, i) {
+  const m = H.MOVES[it.move];
+  if (!m) return '';
+  if (m.kind === 'pullups') return pullupCard(it, i, S.home._editing ? S.home.id : null);
+  const title = m.named
+    ? `<input type="text" data-bind="home:items.${i}.name" value="${esc(it.name)}" placeholder="Movement name, e.g. Curls" aria-label="Movement name">`
+    : `<h3>${esc(m.name)}${m.per ? ` <span class="small muted">${m.per}</span>` : ''}</h3>`;
+  const head = `<div class="card-head">${title}<button class="link" data-action="item-remove" data-v="${i}">Remove</button></div>`;
+  const about = m.about && m.kind !== 'ladders' ? `<p class="why">${esc(m.about)}</p>` : '';
+  if (m.kind === 'warmup') {
+    return `<section class="card">${head}${about}
+      <div class="setting-row"><button class="btn ${it.done ? 'good' : ''}" data-action="wu-done" data-v="${i}">${it.done ? '✓ Done' : 'Tick when done'}</button>
+      <span class="glabel">Rounds</span><div class="seg rounds">${[1, 2, 3]
+        .map((n) => `<button class="${(it.rounds || 1) === n ? 'on' : ''}" data-action="wu-rounds" data-path="${i}" data-v="${n}" aria-label="${n} round${n > 1 ? 's' : ''}">${n}</button>`)
+        .join('')}</div></div></section>`;
+  }
+  const bellStep = ['swings', 'getups', 'press'].includes(it.move) ? 4 : S.settings.rounding || 2.5;
+  const kgRow = m.kg
+    ? `<div class="group-head"><span class="glabel">${it.move === 'custom' ? 'Weight (optional)' : 'Bell'}</span>${stepper(`hk.${i}`, it.kg || 0)}</div>`
+    : '';
+  const variation = m.variation
+    ? `<input type="text" data-bind="home:items.${i}.variation" value="${esc(it.variation)}" placeholder="Variation, e.g. to box, feet wide, hands elevated" aria-label="Variation">`
+    : '';
+  if (m.kind === 'ladders') {
+    const planned = it.ladders.filter((l) => !l.time);
+    const pp = H.pressProgress(S.workouts.filter((w) => w.id !== S.home.id), it.kg);
+    const reps = H.ladderReps(it.ladders);
+    return `<section class="card">${head}${kgRow}
+      <div class="quick">${miniStep('q-sets', i, planned.length, 1, 'Ladders')}${miniStep('q-reps', i, planned[0] ? H.rungText(planned[0].top) : '–', 1, 'Rungs')}</div>
+      <div class="chips">${it.ladders
+        .map((l, li) => `<button class="chip-set" data-action="hs-edit" data-path="${i}.${li}">${H.rungText(l.top)}${l.time ? `<small>${fmtTime(l.time)}</small>` : ''}</button>`)
+        .join('')}</div>
+      <button class="btn sm" data-action="hs-add" data-v="${i}">+1 ladder</button>
+      <div class="goal">
+        <p>This session: <b>${H.ladderText(it.ladders)}</b> = ${reps} reps per arm</p>
+        <p>${pp.last ? `Last with ${kg(it.kg)} kg: ${esc(pp.last.text)}` : `No ladders logged with ${kg(it.kg)} kg yet`}</p>
+        <p>Goal for this bell: ${pp.goalText} (${pp.goalReps} reps per arm)${pp.reached ? ' — reached ✓' : ''}, then a heavier bell.</p>
+        <p>Long-term goal: press the ${H.PRESS_LONG_TERM_KG} kg bell.</p>
+      </div>
+    </section>`;
+  }
+  const secs = m.kind === 'secs';
+  const key = secs ? 'secs' : 'reps';
+  const planned = it.sets.filter((s) => !s.time);
+  const step = it.move === 'swings' ? 10 : 1;
+  const quick = m.total
+    ? `<div class="quick">${miniStep('q-reps', i, planned[0] ? planned[0].reps : '–', step, 'Total reps')}</div>`
+    : `<div class="quick">${miniStep('q-sets', i, planned.length, 1, 'Sets')}${miniStep('q-reps', i, planned[0] ? planned[0][key] : '–', 1, secs ? 'Seconds' : 'Reps')}</div>`;
+  return `<section class="card">${head}${about}${variation}${kgRow}${quick}
+    <div class="chips">${it.sets
+      .map((s, si) => `<button class="chip-set" data-action="hs-edit" data-path="${i}.${si}">${s[key]}${secs ? 's' : ''}${s.time ? `<small>${fmtTime(s.time)}</small>` : ''}</button>`)
+      .join('')}</div>
+    <button class="btn sm" data-action="hs-add" data-v="${i}">+1 set (practice, with time)</button>
+  </section>`;
+}
+
+function viewHomeSession() {
+  const h = S.home;
+  if (!h) return viewHome();
+  const editing = !!h._editing;
+  return `<header class="top bar">
+      <button class="btn ghost" data-action="home-back">‹ ${S.homeBack === 'history' ? 'Back' : 'Home'}</button>
+      <div class="title"><div class="t">Home session</div><div class="sub">${editing ? fmtDate(h.date) + ' · ' + fmtTime(h.date) : 'New'}</div></div>
+      <button class="btn primary sm" data-action="home-save">Save</button>
+    </header>
+    <main class="wrap">
+      <p class="hint">Home sessions never change your gym plan.</p>
+      ${h.items.map((it, i) => homeItemCard(it, i)).join('')}
+      <button class="add" data-action="home-add">+ Add movements</button>
+      <section class="card">
+        <label class="lbl" for="hmin">Total time (minutes, optional)</label>
+        <input id="hmin" type="text" inputmode="decimal" data-bind="home:minutes" data-num value="${h.minutes ?? ''}" placeholder="e.g. 25">
+        <label class="lbl" for="hnotes">Notes</label>
+        <textarea id="hnotes" data-bind="home:notes" rows="2">${esc(h.notes)}</textarea>
+        <label class="lbl" for="hdate">Date &amp; time</label>
+        <input id="hdate" type="datetime-local" data-homedate value="${toLocalInput(h.date)}">
+      </section>
+      <button class="btn primary big block" data-action="home-save">Save session</button>
+      ${editing ? '<button class="btn danger block" data-action="home-delete">Delete this session</button>' : ''}
+    </main>`;
+}
+
+async function saveHome() {
+  const h = clone(S.home);
+  const editing = !!h._editing;
+  h.items = h.items.filter((it) => {
+    const m = H.MOVES[it.move];
+    if (!m) return false;
+    if (m.kind === 'warmup') return it.done;
+    if (m.kind === 'pullups') return it.mode && it.sets.some((s) => s.done);
+    if (m.kind === 'ladders') return it.ladders.length > 0;
+    return it.sets.length > 0;
+  });
+  for (const it of h.items) if (it.move === 'custom' && !(it.name || '').trim()) it.name = 'Custom';
+  if (!h.items.length) return toast('Nothing to save yet — add a set or tick the warm-up');
+  if (!editing) {
+    h.date = h._dateTouched && h.date ? h.date : new Date().toISOString();
+    h.createdAt = Date.now();
+  } else h.updatedAt = Date.now();
+  for (const k of Object.keys(h)) if (k.startsWith('_')) delete h[k];
+  if (editing) S.workouts = S.workouts.map((x) => (x.id === h.id ? h : x));
+  else S.workouts.push(h);
+  await saveWorkouts();
+  const back = S.homeBack === 'history' ? 'history' : 'home';
+  S.home = null;
+  S.homeDirty = false;
+  go(back);
+  toast('Home session saved');
 }
 
 // ---------------------------------------------------------------- workout logging
@@ -395,7 +660,8 @@ function cardioCard(d) {
 }
 
 function pullupsCard(d) {
-  if (!d.pullups) return `<button class="add" data-action="pu-add">+ Pull-ups 3×5 (bodyweight)</button>`;
+  if (!d.pullups || d.pullups.mode) return pullupCard(d.pullups, 'gym', d._editing ? d.id : null);
+  // Pull-ups logged before v4 (3×5, not part of the program).
   return `<section class="card">
     <div class="card-head"><h3>Pull-ups</h3><button class="link" data-action="pu-remove">Remove</button></div>
     <p class="why">Bodyweight · 3×5 · tap when done, hold to change reps</p>
@@ -459,13 +725,19 @@ function resolveSet(path) {
     const g = d.lifts[+p[1]].groups[+p[2]];
     return { set: g.sets[+p[3]], target: g.target, kind: 'lift', title: `${liftName(d.lifts[+p[1]].lift)} · ${g.label}` };
   }
-  if (p[0] === 'p') return { set: d.pullups.sets[+p[1]], target: L.REPS, kind: 'pullup', title: 'Pull-ups' };
+  if (p[0] === 'p' || p[0] === 'hp') {
+    const rec = p[0] === 'p' ? d.pullups : S.home.items[+p[1]];
+    const si = +p[p.length - 1];
+    const target = rec.mode ? (rec.ladder ? rec.ladder[si] : null) : L.REPS;
+    return { set: rec.sets[si], target, kind: 'pullup', title: 'Pull-ups' };
+  }
   const x = d.extras[+p[1]];
   return { set: x.sets[+p[2]], target: null, kind: 'extra', title: x.name || 'Extra exercise', list: x.sets, index: +p[2] };
 }
 
 function touched() {
-  if (S.edit) S.editDirty = true;
+  if (S.view === 'homesess') S.homeDirty = true;
+  else if (S.edit) S.editDirty = true;
   else saveDraftSoon();
 }
 
@@ -475,12 +747,12 @@ function tapSet(path) {
   const s = r.set;
   if (!s.done) {
     s.done = true;
-    s.reps = r.target;
-    startRest();
+    if (r.target != null) s.reps = r.target;
+    if (S.view === 'workout') startRest();
   } else if (s.reps > 0) s.reps -= 1;
   else {
     s.done = false;
-    s.reps = r.target;
+    s.reps = r.target != null ? r.target : 1;
   }
   touched();
   render();
@@ -510,6 +782,12 @@ function weightTarget(path) {
   if (p[0] === 'a') {
     const e = d.lifts[+p[1]];
     return { obj: e.attempts[+p[2]], step: S.settings.lifts[e.lift].increment };
+  }
+  if (p[0] === 'pk') return { obj: d.pullups, step: S.settings.rounding || 2.5 };
+  if (p[0] === 'hk') {
+    const it = S.home.items[+p[1]];
+    const bell = ['swings', 'getups', 'press'].includes(it.move);
+    return { obj: { get weight() { return it.kg || 0; }, set weight(v) { it.kg = v; } }, step: bell ? 4 : S.settings.rounding || 2.5 };
   }
   return { obj: d.extras[+p[1]], step: S.settings.rounding || 2.5 };
 }
@@ -549,6 +827,8 @@ async function finishWorkout() {
     w.updatedAt = Date.now();
   }
   if (w.cardio && w.cardio.minutes == null && w.cardio.distance == null) w.cardio = null;
+  // Pull-ups added but nothing ticked: not a pull-up session (so it can't use up today's).
+  if (w.pullups && w.pullups.mode && !w.pullups.sets.some((s) => s.done)) w.pullups = null;
   w.extras = (w.extras || []).filter((x) => (x.name || '').trim() || x.sets.length);
   for (const k of Object.keys(w)) if (k.startsWith('_')) delete w[k];
 
@@ -670,78 +950,6 @@ async function keepAwake(on) {
   }
 }
 
-// ---------------------------------------------------------------- kettlebell
-
-function newKb() {
-  const prev = L.sortByDate(S.workouts.filter((w) => w.kind === 'home')).pop();
-  S.kb = {
-    id: L.makeId(),
-    kind: 'home',
-    date: null,
-    swings: prev ? { ...prev.swings } : { reps: 100, kg: 20 },
-    getups: prev ? { ...prev.getups } : { reps: 10, kg: 20 },
-    minutes: null,
-    notes: '',
-  };
-  go('kb');
-}
-
-function kbStepper(path, step, unit) {
-  const v = getPath(S.kb, path);
-  return `<div class="stepper">
-    <button class="step" data-action="kb-step" data-path="${path}" data-v="${-step}" aria-label="Less">−</button>
-    <input class="wt" type="text" inputmode="decimal" data-bind="kb:${path}" data-num value="${v ?? ''}">
-    <span class="unit">${unit}</span>
-    <button class="step" data-action="kb-step" data-path="${path}" data-v="${step}" aria-label="More">+</button>
-  </div>`;
-}
-
-function viewKb() {
-  const k = S.kb;
-  const editing = !!k._editing;
-  return `<header class="top bar">
-      <button class="btn ghost" data-action="kb-back">‹ ${editing ? 'Back' : 'Home'}</button>
-      <div class="title"><div class="t">Home — S&amp;S</div><div class="sub">${editing ? 'Editing · ' + fmtDate(k.date) : 'Kettlebell'}</div></div>
-      <button class="btn primary sm" data-action="kb-save">Save</button>
-    </header>
-    <main class="wrap">
-      <section class="card"><h3>Swings</h3>
-        <div class="group-head"><span class="glabel">Total reps</span>${kbStepper('swings.reps', 10, 'reps')}</div>
-        <div class="group-head"><span class="glabel">Bell</span>${kbStepper('swings.kg', 4, 'kg')}</div>
-      </section>
-      <section class="card"><h3>Get-ups</h3>
-        <div class="group-head"><span class="glabel">Total reps</span>${kbStepper('getups.reps', 1, 'reps')}</div>
-        <div class="group-head"><span class="glabel">Bell</span>${kbStepper('getups.kg', 4, 'kg')}</div>
-      </section>
-      <section class="card">
-        <label class="lbl" for="kbmin">Time (minutes, optional)</label>
-        <input id="kbmin" type="text" inputmode="decimal" data-bind="kb:minutes" data-num value="${k.minutes ?? ''}" placeholder="e.g. 25">
-        <label class="lbl" for="kbnotes">Notes</label>
-        <textarea id="kbnotes" data-bind="kb:notes" rows="2">${esc(k.notes)}</textarea>
-        <label class="lbl" for="kbdate">Date &amp; time</label>
-        <input id="kbdate" type="datetime-local" data-kbdate value="${toLocalInput(k.date)}">
-      </section>
-      <button class="btn primary big block" data-action="kb-save">Save session</button>
-      ${editing ? '<button class="btn danger block" data-action="kb-delete">Delete this session</button>' : ''}
-    </main>`;
-}
-
-async function saveKb() {
-  const k = clone(S.kb);
-  const editing = !!k._editing;
-  if (!editing) {
-    k.date = k._dateTouched && k.date ? k.date : new Date().toISOString();
-    k.createdAt = Date.now();
-  } else k.updatedAt = Date.now();
-  for (const key of Object.keys(k)) if (key.startsWith('_')) delete k[key];
-  if (editing) S.workouts = S.workouts.map((x) => (x.id === k.id ? k : x));
-  else S.workouts.push(k);
-  await saveWorkouts();
-  S.kb = null;
-  go(editing ? 'history' : 'home');
-  toast('Kettlebell session saved');
-}
-
 // ---------------------------------------------------------------- block start screen
 
 function openBlockSetup() {
@@ -823,11 +1031,18 @@ function updateBlockStartCalcs() {
 
 // ---------------------------------------------------------------- history
 
-function summary(w) {
+function pullupSummary(rec, counts) {
+  const sets = rec.sets.map((s) => (s.done ? s.reps : '–')).join(',');
+  const what = rec.mode === 'test' ? `max test ${sets}` : sets;
+  const w = rec.kg ? ` +${kg(rec.kg)} kg` : '';
+  return `Pull-ups ${what}${w}${rec.mode && counts === false ? " (didn't count)" : ''}`;
+}
+
+function summary(w, counted) {
   if (w.kind === 'home') {
-    const p = [];
-    if (w.swings) p.push(`Swings ${w.swings.reps} × ${kg(w.swings.kg)} kg`);
-    if (w.getups) p.push(`Get-ups ${w.getups.reps} × ${kg(w.getups.kg)} kg`);
+    const p = H.homeItems(w)
+      .map((it) => (it.move === 'pullups' ? pullupSummary(it, counted.get(w.id)) : H.itemSummary(it)))
+      .filter(Boolean);
     if (w.minutes) p.push(`${w.minutes} min`);
     return p.join(' · ');
   }
@@ -842,23 +1057,24 @@ function summary(w) {
       .join(' + ');
     return `${nm} ${gs}${e.deload ? ' (deload)' : ''}${e.tough ? ' (tough)' : ''}`;
   });
-  if (w.pullups) parts.push(`Pull-ups ${w.pullups.sets.map((s) => (s.done ? s.reps : '–')).join(',')}`);
+  if (w.pullups) parts.push(pullupSummary(w.pullups, counted.get(w.id)));
   if (w.extras?.length) parts.push(`+${w.extras.length} extra`);
   return parts.join(' · ');
 }
 
 function viewHistory() {
   const list = L.sortByDate(S.workouts).reverse();
+  const counted = new Map(P.pullupRecords(S.workouts).map((r) => [r.id, r.counts]));
   let month = '';
   const rows = list
     .map((w) => {
       const m = new Date(w.date).toLocaleDateString(undefined, { month: 'long', year: 'numeric' });
       const head = m !== month ? `<div class="month">${(month = m)}</div>` : '';
-      const title = w.kind === 'home' ? 'Home — Simple &amp; Sinister' : esc(L.workoutTitle(w));
+      const title = w.kind === 'home' ? 'Home session' : esc(L.workoutTitle(w));
       return `${head}<button class="hrow" data-action="h-open" data-v="${esc(w.id)}">
         <div class="hdate">${fmtDate(w.date)} · ${fmtTime(w.date)} ${blockTag(w)}</div>
         <div class="htitle">${title}</div>
-        <div class="hsum">${esc(summary(w))}</div></button>`;
+        <div class="hsum">${esc(summary(w, counted))}</div></button>`;
     })
     .join('');
   return `<header class="top"><h1>History</h1></header>
@@ -869,8 +1085,11 @@ function openHistory(id) {
   const w = S.workouts.find((x) => x.id === id);
   if (!w) return;
   if (w.kind === 'home') {
-    S.kb = { ...clone(w), _editing: true };
-    go('kb');
+    const { swings, getups, ...rest } = clone(w);
+    S.home = { ...rest, items: clone(H.homeItems(w)), _editing: true };
+    S.homeBack = 'history';
+    S.homeDirty = false;
+    go('homesess');
   } else {
     S.edit = { ...clone(w), _editing: true };
     S.editDirty = false;
@@ -880,35 +1099,38 @@ function openHistory(id) {
 
 // ---------------------------------------------------------------- progress
 
-let chartPts = [];
+const CHARTS = new Map(); // chart id → points with screen positions
 
 function niceStep(range) {
-  for (const s of [1, 2.5, 5, 10, 20, 25, 50, 100]) if (range / s <= 5) return s;
+  for (const s of [1, 2, 2.5, 5, 10, 20, 25, 50, 100]) if (range / s <= 5) return s;
   return 200;
 }
 
-function chartSvg(points) {
+/** Line chart of points [{ date, value, head, tip }] (one series). */
+function chartSvg(id, points, label) {
   const W = 340,
-    H = 210,
+    Hh = 210,
     pl = 40,
     pr = 14,
     pt = 34,
     pb = 26;
-  const vals = points.map((p) => p.top);
+  const vals = points.map((p) => p.value);
   let lo = Math.min(...vals),
     hi = Math.max(...vals);
-  if (hi - lo < 10) {
-    lo -= 5;
-    hi += 5;
+  if (hi - lo < 4) {
+    lo -= 2;
+    hi += 2;
   }
+  if (lo < 0 && Math.min(...vals) >= 0) lo = 0;
   const step = niceStep(hi - lo);
   lo = Math.floor(lo / step) * step;
   hi = Math.ceil(hi / step) * step;
   const t0 = Date.parse(points[0].date),
     t1 = Date.parse(points[points.length - 1].date);
   const x = (t) => (t1 === t0 ? pl + (W - pl - pr) / 2 : pl + ((t - t0) / (t1 - t0)) * (W - pl - pr));
-  const y = (v) => pt + (1 - (v - lo) / (hi - lo)) * (H - pt - pb);
-  chartPts = points.map((p) => ({ ...p, cx: x(Date.parse(p.date)), cy: y(p.top) }));
+  const y = (v) => pt + (1 - (v - lo) / (hi - lo)) * (Hh - pt - pb);
+  const pts = points.map((p) => ({ ...p, cx: x(Date.parse(p.date)), cy: y(p.value) }));
+  CHARTS.set(id, pts);
 
   let grid = '';
   for (let v = lo; v <= hi + 1e-9; v += step) {
@@ -916,90 +1138,133 @@ function chartSvg(points) {
       <text x="${pl - 6}" y="${y(v) + 4}" text-anchor="end" font-size="11" fill="var(--muted)">${kg(v)}</text>`;
   }
   const xl = (p, anchor) =>
-    `<text x="${p.cx}" y="${H - 6}" text-anchor="${anchor}" font-size="11" fill="var(--muted)">${new Date(p.date).toLocaleDateString(undefined, { day: 'numeric', month: 'short' })}</text>`;
-  const first = chartPts[0],
-    last = chartPts[chartPts.length - 1];
-  const path = chartPts.map((p, i) => `${i ? 'L' : 'M'}${p.cx.toFixed(1)},${p.cy.toFixed(1)}`).join(' ');
-  const dots = chartPts
+    `<text x="${p.cx}" y="${Hh - 6}" text-anchor="${anchor}" font-size="11" fill="var(--muted)">${new Date(p.date).toLocaleDateString(undefined, { day: 'numeric', month: 'short' })}</text>`;
+  const first = pts[0],
+    last = pts[pts.length - 1];
+  const path = pts.map((p, i) => `${i ? 'L' : 'M'}${p.cx.toFixed(1)},${p.cy.toFixed(1)}`).join(' ');
+  const dots = pts
     .map((p) => `<circle cx="${p.cx}" cy="${p.cy}" r="4.5" fill="var(--chart)" stroke="var(--surface)" stroke-width="2"/>`)
     .join('');
   return `<div class="chart-wrap">
-    <svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Top set weight over time">
+    <svg viewBox="0 0 ${W} ${Hh}" role="img" aria-label="${esc(label)} over time" data-chart="${id}">
       ${grid}
       <path d="${path}" fill="none" stroke="var(--chart)" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
-      <line class="xhair" x1="0" x2="0" y1="${pt}" y2="${H - pb}" stroke="var(--muted)" stroke-width="1" visibility="hidden"/>
+      <line class="xhair" x1="0" x2="0" y1="${pt}" y2="${Hh - pb}" stroke="var(--muted)" stroke-width="1" visibility="hidden"/>
       ${dots}
-      ${xl(first, chartPts.length > 1 ? 'start' : 'middle')}${chartPts.length > 1 ? xl(last, 'end') : ''}
-      <rect class="chart-hit" x="0" y="0" width="${W}" height="${H}" fill="transparent"/>
+      ${xl(first, pts.length > 1 ? 'start' : 'middle')}${pts.length > 1 ? xl(last, 'end') : ''}
+      <rect class="chart-hit" x="0" y="0" width="${W}" height="${Hh}" fill="transparent"/>
     </svg>
     <div class="chart-tip" hidden></div></div>`;
 }
 
 function showTip(ev) {
   const hit = ev.target.closest('.chart-hit');
-  if (!hit || !chartPts.length) return;
+  if (!hit) return;
   const svg = hit.ownerSVGElement;
+  const pts = CHARTS.get(svg.dataset.chart);
+  if (!pts || !pts.length) return;
   const box = svg.getBoundingClientRect();
   const vx = ((ev.clientX - box.left) / box.width) * 340;
-  let best = chartPts[0];
-  for (const p of chartPts) if (Math.abs(p.cx - vx) < Math.abs(best.cx - vx)) best = p;
+  let best = pts[0];
+  for (const p of pts) if (Math.abs(p.cx - vx) < Math.abs(best.cx - vx)) best = p;
   const tip = svg.parentElement.querySelector('.chart-tip');
   const xh = svg.querySelector('.xhair');
   xh.setAttribute('x1', best.cx);
   xh.setAttribute('x2', best.cx);
   xh.setAttribute('visibility', 'visible');
-  const sets = best.sets.map((s) => `${kg(s.weight)}×${s.reps}`).join(', ');
-  tip.innerHTML = `<b>${kg(best.top)} kg</b> · ${fmtDate(best.date)} · ${L.TYPE_LABEL[best.type] || ''}${best.deload ? ' (deload)' : ''}<br><span class="muted">${esc(sets)}</span>`;
+  tip.innerHTML = `<b>${esc(best.head)}</b> · ${fmtDate(best.date)}${best.tip ? `<br><span class="muted">${esc(best.tip)}</span>` : ''}`;
   tip.hidden = false;
   const px = (best.cx / 340) * box.width;
   tip.style.left = Math.min(Math.max(px, 90), box.width - 90) + 'px';
 }
 
-function viewProgress() {
+function listTable(rows, empty) {
+  return rows.length
+    ? `<table class="best"><tbody>${rows.map((r) => `<tr><td>${r.label}</td><td>${r.date ? fmtDate(r.date, true) : ''}</td></tr>`).join('')}</tbody></table>`
+    : `<p class="muted">${empty}</p>`;
+}
+
+function segBtns(field, opts) {
+  return `<div class="seg">${opts
+    .map(([v, t]) => `<button class="${S[field] === v ? 'on' : ''}" data-action="prog" data-path="${field}" data-v="${v}">${t}</button>`)
+    .join('')}</div>`;
+}
+
+function progressGym() {
   const lift = S.progressLift;
   const all = L.liftHistory(S.workouts, lift);
   const tf = ['3x5', '3x3', 'test'];
-  const pts =
+  const hist =
     S.progressType === 'all'
       ? all
       : all.filter((h) => (S.progressType === '3-5' ? tf.includes(h.type) : h.type === S.progressType));
-  const best = L.bestSets(S.workouts, lift, 8);
-  const rms = L.oneRMHistory(S.workouts, S.settings, lift);
-  const seg = (field, opts) =>
-    `<div class="seg">${opts
-      .map(([v, t]) => `<button class="${S[field] === v ? 'on' : ''}" data-action="prog" data-path="${field}" data-v="${v}">${t}</button>`)
-      .join('')}</div>`;
+  const pts = hist.map((h) => ({
+    date: h.date,
+    value: h.top,
+    head: `${kg(h.top)} kg · ${L.TYPE_LABEL[h.type] || ''}${h.deload ? ' (deload)' : ''}`,
+    tip: h.sets.map((s) => `${kg(s.weight)}×${s.reps}`).join(', '),
+  }));
+  const best = L.bestSets(S.workouts, lift, 8).map((b) => ({ label: `<b>${kg(b.weight)} kg</b> × ${b.reps}`, date: b.date }));
+  const rms = L.oneRMHistory(S.workouts, S.settings, lift).map((r) => ({
+    label: `<b>${kg(r.weight)} kg</b> · ${r.source === 'tested' ? 'tested' : 'entered at block start'}`,
+    date: r.date,
+  }));
+  return `${segBtns('progressLift', L.LIFTS.map((l) => [l.id, l.short]))}
+    <section class="card">
+      <h3>${liftName(lift)} · top set (kg)</h3>
+      ${segBtns('progressType', [['all', 'All'], ['volume', 'Vol'], ['heavy', 'Heavy'], ['unload', 'Unload'], ['3-5', '3–5']])}
+      ${pts.length ? chartSvg('gym', pts, 'Top set') + '<p class="why">Tap the chart to see a day.</p>' : '<p class="muted">Nothing logged yet for this lift.</p>'}
+    </section>
+    <section class="card"><h3>Best sets</h3>${listTable(best, 'Your heaviest sets will be listed here.')}</section>
+    <section class="card"><h3>1RMs</h3>${listTable(rms, '1RMs from the 3–5 block (entered and tested) will be listed here.')}</section>`;
+}
+
+function progressHome() {
+  const moves = H.loggedMoves(S.workouts);
+  if (!moves.length) return '<section class="card"><p class="muted">Home movements you log will show up here.</p></section>';
+  const sel = moves.find((m) => m.key === S.progressMove) || moves[0];
+  const pr = H.homeProgress(S.workouts, sel.move, sel.move === 'custom' ? sel.name : undefined);
+  const charts = pr.charts
+    .filter((c) => c.points.length)
+    .map(
+      (c, ci) => `<section class="card"><h3>${esc(sel.name)} · ${esc(c.title)}</h3>
+        ${chartSvg('home' + ci, c.points.map((p) => ({ ...p, head: `${kg(p.value)}` })), c.title)}</section>`
+    )
+    .join('');
+  const bests = pr.bests.map((b) => ({ label: esc(b.label) + (b.extra ? ` <span class="muted">· ${esc(b.extra)}</span>` : ''), date: b.date }));
+  return `<div class="chips">${moves
+    .map((m) => `<button class="chip-set ${m.key === sel.key ? 'on' : ''}" data-action="prog" data-path="progressMove" data-v="${esc(m.key)}">${esc(m.name)}</button>`)
+    .join('')}</div>
+    ${charts}
+    <section class="card"><h3>Bests</h3>${listTable(bests, 'Nothing yet.')}</section>`;
+}
+
+function progressPullups() {
+  const st = puState();
+  const pr = P.pullupProgress(S.workouts, S.settings);
+  const pts = pr.sessions.map((s) => ({ ...s, head: `${s.value} reps` }));
+  const tests = pr.tests.map((t) => ({
+    label: `<b>${t.max}</b> reps${t.kg ? ` +${kg(t.kg)} kg` : ''} · ${t.source === 'setup' ? 'entered at setup' : 'tested'}`,
+    date: t.date,
+  }));
+  const status =
+    st.phase === 'setup'
+      ? '<p class="why">Not set up yet.</p><button class="btn block" data-action="pu-setup">Set up the pull-up program</button>'
+      : `<p><b>${esc(st.program.name)}</b></p><p class="calc">Max ${st.max}${st.kg ? ` +${kg(st.kg)} kg` : ''} · ${esc(st.progress || pullupLine(st))}</p>`;
+  return `<section class="card"><h3>Pull-up program</h3>${status}</section>
+    <section class="card"><h3>Total reps per session</h3>
+      ${pts.length ? chartSvg('pu', pts, 'Pull-up reps') : '<p class="muted">Pull-up sessions you log will show up here.</p>'}</section>
+    <section class="card"><h3>Max reps</h3>${listTable(tests, 'Your tested maxes will be listed here.')}</section>`;
+}
+
+function viewProgress() {
+  CHARTS.clear();
+  const area = S.progressArea;
+  const body = area === 'home' ? progressHome() : area === 'pullups' ? progressPullups() : progressGym();
   return `<header class="top"><h1>Progress</h1></header>
     <main class="wrap">
-      ${seg('progressLift', L.LIFTS.map((l) => [l.id, l.short]))}
-      <section class="card">
-        <h3>${liftName(lift)} · top set (kg)</h3>
-        ${seg('progressType', [['all', 'All'], ['volume', 'Vol'], ['heavy', 'Heavy'], ['unload', 'Unload'], ['3-5', '3–5']])}
-        ${pts.length ? chartSvg(pts) + '<p class="why">Tap the chart to see a day.</p>' : '<p class="muted">Nothing logged yet for this lift.</p>'}
-      </section>
-      <section class="card">
-        <h3>Best sets</h3>
-        ${
-          best.length
-            ? `<table class="best"><tbody>${best
-                .map((b) => `<tr><td><b>${kg(b.weight)} kg</b> × ${b.reps}</td><td>${fmtDate(b.date, true)}</td></tr>`)
-                .join('')}</tbody></table>`
-            : '<p class="muted">Your heaviest sets will be listed here.</p>'
-        }
-      </section>
-      <section class="card">
-        <h3>1RMs</h3>
-        ${
-          rms.length
-            ? `<table class="best"><tbody>${rms
-                .map(
-                  (r) =>
-                    `<tr><td><b>${kg(r.weight)} kg</b> · ${r.source === 'tested' ? 'tested' : 'entered at block start'}</td><td>${r.date ? fmtDate(r.date, true) : ''}</td></tr>`
-                )
-                .join('')}</tbody></table>`
-            : '<p class="muted">1RMs from the 3–5 block (entered and tested) will be listed here.</p>'
-        }
-      </section>
+      ${segBtns('progressArea', [['gym', 'Gym'], ['home', 'Home'], ['pullups', 'Pull-ups']])}
+      ${body}
     </main>`;
 }
 
@@ -1074,6 +1339,16 @@ function viewSettings() {
           <button class="step" data-action="rest-step" data-v="15" aria-label="Longer">+</button></div></div>
         <p class="why">Starts by itself when you tick a set. Beeps at the end (iPhone ring switch must be on).</p>
       </section>
+      ${(() => {
+        const ps = puState();
+        const on = ps.phase !== 'setup';
+        return `<section class="card">
+        <h3>Pull-up program</h3>
+        ${on ? `<p><b>${esc(ps.program.name)}</b></p><p class="calc">Max ${ps.max}${ps.kg ? ` +${kg(ps.kg)} kg` : ''} · ${esc(ps.progress || pullupLine(ps))}</p>` : ''}
+        <p class="why">Pavel's Fighter Pullup Program. Runs alongside everything else: log it on gym days or in a home session. Only the first pull-up session each day counts. It never changes the gym plan.</p>
+        <button class="btn block" data-action="pu-setup">${on ? 'Change my max (restarts the program)' : 'Set up the pull-up program'}</button>
+      </section>`;
+      })()}
       <section class="card">
         <h3>Sequence</h3>
         <p>Next gym session: <b>${esc(sc.nextName)}</b></p>
@@ -1189,6 +1464,23 @@ function viewSheet() {
     body = `<h3>${esc(sh.text)}</h3>
       <p class="why center">Your next session is due ${fmtDue(sh.due)} — if you train now, the next due day is worked out from today.</p>
       <button class="btn primary big block" data-action="train-anyway">Train anyway</button>`;
+  } else if (sh.kind === 'presets') {
+    body = `<h3>Add to this home session</h3>
+      <div class="sess-list">${H.PRESETS.map(
+        (p) => `<button class="sess" data-action="preset-add" data-v="${p.id}"><span><div class="nm">${esc(p.name)}</div><div class="ds">${esc(p.about)}</div></span></button>`
+      ).join('')}</div>
+      <p class="why">You can add more than one, e.g. Simple &amp; Sinister plus a plank.</p>`;
+  } else if (sh.kind === 'homeset') {
+    const it = S.home.items[sh.i];
+    const m = H.MOVES[it.move];
+    const ladders = m.kind === 'ladders';
+    const val = ladders ? it.ladders[sh.si].top : m.kind === 'secs' ? it.sets[sh.si].secs : it.sets[sh.si].reps;
+    const shown = ladders ? H.rungText(val) : m.kind === 'secs' ? `${val} s` : `${val} reps`;
+    const big = it.move === 'swings' ? [-10, -1, 1, 10] : [-1, 1];
+    body = `<h3>${esc(m.named ? it.name || 'Custom' : m.name)} — ${ladders ? 'ladder' : 'set'} ${sh.si + 1}</h3>
+      <p class="big-num center">${shown}</p>
+      <div class="btn-row">${big.map((d) => `<button class="btn big" data-action="hs-val" data-v="${d}">${d > 0 ? '+' : '−'}${Math.abs(d)}</button>`).join('')}</div>
+      <button class="btn danger block" data-action="hs-del">Delete this ${ladders ? 'ladder' : 'set'}</button>`;
   } else if (sh.kind === 'tough') {
     const e = cur().lifts[sh.li];
     body = `<h3>${liftName(e.lift)} 3×5 at ${kg(e.groups[0].weight)} kg — was this tough?</h3>
@@ -1443,13 +1735,138 @@ document.addEventListener('click', async (ev) => {
       touched();
       return render();
     case 'pu-add':
-      d.pullups = { sets: Array.from({ length: L.PULLUP_SETS }, () => ({ reps: L.REPS, done: false })) };
+      d.pullups = P.newPullupRecord(puState(), lastFreePullups());
       touched();
       return render();
     case 'pu-remove':
       d.pullups = null;
       touched();
       return render();
+    case 'pu-addset':
+    case 'pu-test': {
+      const rec = v === 'gym' ? d.pullups : S.home.items[+v];
+      if (a === 'pu-addset') {
+        const last = rec.sets[rec.sets.length - 1];
+        rec.sets.push({ reps: last ? last.reps : 1, done: false });
+      } else {
+        Object.assign(rec, { mode: 'test', ladder: null, sets: [{ reps: puState().max || 1, done: false }] });
+      }
+      touched();
+      return render();
+    }
+    case 'pu-setup': {
+      const ps = puState();
+      S.puSetup = { max: ps.phase === 'setup' ? 5 : ps.max, kg: ps.kg || 0, back: S.view };
+      return go('pusetup');
+    }
+    case 'pus-step': {
+      const f = el.dataset.path;
+      S.puSetup[f] = Math.max(0, Math.round((S.puSetup[f] + +v) * 100) / 100);
+      return render();
+    }
+    case 'pus-back': {
+      const back = S.puSetup?.back || 'settings';
+      S.puSetup = null;
+      return go(back);
+    }
+    case 'pus-save': {
+      const u = S.puSetup;
+      if (S.settings.pullups && !confirm('Start the pull-up program again from this max? Your logged pull-ups are kept.')) return;
+      S.settings.pullups = { max: u.max, kg: u.kg || 0, at: new Date().toISOString() };
+      await saveSettings();
+      // A home session waiting for the setup gets today's pull-ups now.
+      if (S.home) {
+        const st = puState();
+        S.home.items = S.home.items.map((it) => (it.move === 'pullups' && !it.mode ? { move: 'pullups', ...P.newPullupRecord(st, lastFreePullups()) } : it));
+      }
+      const back = u.back || 'settings';
+      S.puSetup = null;
+      go(back);
+      return toast(`Pull-ups: ${P.pickProgram(u.max).name}`);
+    }
+
+    // --- home sessions
+    case 'home-open':
+      return openHome(v);
+    case 'home-add':
+      S.sheet = { kind: 'presets' };
+      return render();
+    case 'preset-add':
+      addPreset(v);
+      S.sheet = null;
+      return render();
+    case 'item-remove':
+      S.home.items.splice(+v, 1);
+      touched();
+      return render();
+    case 'wu-done':
+      S.home.items[+v].done = !S.home.items[+v].done;
+      touched();
+      return render();
+    case 'wu-rounds':
+      S.home.items[+el.dataset.path].rounds = +v;
+      touched();
+      return render();
+    case 'q-sets':
+    case 'q-reps': {
+      const it = S.home.items[+el.dataset.path];
+      const m = H.MOVES[it.move];
+      const list = m.kind === 'ladders' ? it.ladders : it.sets;
+      const planned = list.filter((x) => !x.time);
+      const key = m.kind === 'ladders' ? 'top' : m.kind === 'secs' ? 'secs' : 'reps';
+      if (a === 'q-sets') {
+        if (+v > 0) {
+          const src = planned[planned.length - 1] || list[list.length - 1] || { [key]: m.kind === 'secs' ? 10 : 1 };
+          const { time, ...copy } = src;
+          list.splice(planned.length, 0, copy); // planned sets stay before practice sets
+        } else if (planned.length > 1) {
+          list.splice(list.indexOf(planned[planned.length - 1]), 1);
+        }
+      } else {
+        for (const x of planned) x[key] = Math.max(1, Math.min(key === 'top' ? 10 : 1000, x[key] + +v));
+      }
+      touched();
+      return render();
+    }
+    case 'hs-add':
+      H.addSet(S.home.items[+v]);
+      touched();
+      render();
+      return toast('Set added');
+    case 'hs-edit': {
+      const [i, si] = el.dataset.path.split('.').map(Number);
+      S.sheet = { kind: 'homeset', i, si };
+      return render();
+    }
+    case 'hs-val':
+    case 'hs-del': {
+      const { i, si } = S.sheet;
+      const it = S.home.items[i];
+      const m = H.MOVES[it.move];
+      const list = m.kind === 'ladders' ? it.ladders : it.sets;
+      const key = m.kind === 'ladders' ? 'top' : m.kind === 'secs' ? 'secs' : 'reps';
+      if (a === 'hs-del') {
+        list.splice(si, 1);
+        S.sheet = null;
+      } else list[si][key] = Math.max(1, Math.min(key === 'top' ? 10 : 1000, list[si][key] + +v));
+      touched();
+      return render();
+    }
+    case 'home-save':
+      return saveHome();
+    case 'home-back': {
+      if (S.homeDirty && !confirm('Leave without saving this home session?')) return;
+      const back = S.homeBack === 'history' ? 'history' : 'home';
+      S.home = null;
+      return go(back);
+    }
+    case 'home-delete':
+      if (!confirm('Delete this home session?')) return;
+      S.workouts = S.workouts.filter((w) => w.id !== S.home.id);
+      await saveWorkouts();
+      S.home = null;
+      go(S.homeBack === 'history' ? 'history' : 'home');
+      return toast('Session deleted');
     case 'x-add':
       d.extras = d.extras || [];
       d.extras.push({ name: '', weight: 10, sets: [{ reps: 10, done: true }] });
@@ -1505,28 +1922,6 @@ document.addEventListener('click', async (ev) => {
       return toast('Workout deleted');
 
     // --- kettlebell
-    case 'kb-new':
-      return newKb();
-    case 'kb-step': {
-      const p = el.dataset.path;
-      setPath(S.kb, p, Math.max(0, (num(getPath(S.kb, p)) || 0) + +v));
-      return render();
-    }
-    case 'kb-save':
-      return saveKb();
-    case 'kb-back': {
-      const wasEditing = !!S.kb?._editing;
-      S.kb = null;
-      return go(wasEditing ? 'history' : 'home');
-    }
-    case 'kb-delete':
-      if (!confirm('Delete this kettlebell session?')) return;
-      S.workouts = S.workouts.filter((w) => w.id !== S.kb.id);
-      await saveWorkouts();
-      S.kb = null;
-      go('history');
-      return toast('Session deleted');
-
     // --- history / progress
     case 'h-open':
       return openHistory(v);
@@ -1566,7 +1961,10 @@ document.addEventListener('input', (ev) => {
   const b = el.dataset && el.dataset.bind;
   if (!b) return;
   const val = el.dataset.num != null ? num(el.value) : el.value;
-  if (b.startsWith('kb:')) setPath(S.kb, b.slice(3), val);
+  if (b.startsWith('home:')) {
+    setPath(S.home, b.slice(5), val);
+    S.homeDirty = true;
+  }
   else if (b.startsWith('bd:')) {
     setPath(S.blockDraft, b.slice(3), el.dataset.pct != null && val != null ? val / 100 : val);
     updateBlockStartCalcs();
@@ -1607,11 +2005,12 @@ document.addEventListener('change', async (ev) => {
     }
     return;
   }
-  if (el.matches('[data-kbdate]')) {
+  if (el.matches('[data-homedate]')) {
     const iso = fromLocalInput(el.value);
     if (iso) {
-      S.kb.date = iso;
-      S.kb._dateTouched = true;
+      S.home.date = iso;
+      S.home._dateTouched = true;
+      S.homeDirty = true;
     }
     return;
   }

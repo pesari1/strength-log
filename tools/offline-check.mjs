@@ -120,7 +120,7 @@ const swInfo = await c.evaluate(`(async () => {
   return { controlled: !!navigator.serviceWorker.controller, cache: keys[0], files: n };
 })()`);
 check('service worker installed and controlling the page', swInfo.controlled, JSON.stringify(swInfo));
-check('all 11 app files cached', swInfo.files === 11, `${swInfo.files} files`);
+check('all 13 app files cached', swInfo.files === 13, `${swInfo.files} files`);
 await c.evaluate(`(async () => {
   const db = await import('/js/db.js');
   const ws = (await db.get('workouts')) || [];

@@ -1,12 +1,14 @@
-# Strength Log — your guide (version 3)
+# Strength Log — your guide (version 4)
 
 Strength Log is a workout app for your iPhone. It lives on your phone, works with no internet,
 and tells you what your next gym session is, when it's due, and what weights to use.
 It rotates between two training blocks: a **5×5 block** and a **3–5 block**.
+Alongside the gym plan it logs **home sessions** (kettlebell, bodyweight, custom) and runs
+Pavel's **Fighter Pullup Program**. Neither of those ever changes the gym plan.
 
 ---
 
-## Getting version 3 onto your iPhone (if you already have an older version)
+## Getting version 4 onto your iPhone (if you already have an older version)
 
 1. On your iPhone, make a backup first: **Settings → Export backup file → Save to Files**.
 2. On your computer, go to <https://github.com> and open your **strength-log** repository.
@@ -18,10 +20,10 @@ It rotates between two training blocks: a **5×5 block** and a **3–5 block**.
    A banner says **"A new version of the app is ready"** → tap **Update now**.
    - No banner? Swipe the app away completely (swipe up from the bottom and flick it off the top),
      open it again and wait a few seconds. Repeat once if needed.
-7. Check it worked: **Settings** → bottom of the page says **Strength Log 3.0.0**, and Home shows
-   a line like "5×5 block — workout 11 of 24" under the title.
+7. Check it worked: **Settings** → bottom of the page says **Strength Log 4.0.0**, and the Home
+   screen has a **Home session** card and a **Pull-ups** line in the workout card.
 
-Your logged workouts stay exactly as they are and count toward your first 5×5 block.
+Your logged workouts stay exactly as they are. Older "Home — S&S" sessions show up as home sessions.
 
 ---
 
@@ -130,13 +132,71 @@ The block ends when **all four lifts have done a 1RM test**. Rest a full 5 minut
 The first time, the block start screen asks for a conservative 1RM per lift (bench is filled in with 105).
 Later, it offers the 1RMs from your last tests.
 
+### Home sessions
+
+Tap **Home session** on Home. Pick one or more presets (you can combine them, e.g. S&S + a plank):
+
+- **Simple & Sinister**: warm-up (goblet squat ×5, halo ×5 each way, hip bridge ×5 — tick it when done
+  and pick 1–3 rounds), swings (total reps + bell), get-ups (total reps + bell).
+- **Kettlebell press ladders** (Rite of Passage press): bell, number of ladders and the rungs per arm
+  (e.g. 3 ladders of 1-2-3). The card shows your last ladders with that bell, Pavel's goal for a bell
+  (5 ladders of 1-2-3-4-5 per arm, then a heavier bell) and the long-term goal (press the 32 kg bell).
+  It doesn't pick your next step for you.
+- **Bodyweight**: pistol squat (per leg) and one-arm push-up (per arm) with sets × reps and a
+  "variation" box (e.g. "to box"); hardstyle plank in sets × seconds (Pavel: 3–5 sets, no more than
+  10 seconds, maximum tension).
+- **Pull-ups**: today's pull-up session from your program (see below).
+- **Custom**: any movement name, sets × reps, and a weight if you want.
+
+Every movement remembers what you did last time and fills it in. Use the **Sets** and **Reps** buttons
+to change the plan. Tap a set to change or delete it.
+
+**Grease the Groove:** tap **+1 set** whenever you do a practice set during the day. It adds a set like
+the last one, with the time. Save after each one. Later the same day, the Home card says
+**Continue today's home session**, so all the day's sets end up in one log.
+
+Home sessions never change the gym sequence, weights, rest days, due dates or block counts.
+
+### Pull-up program (Pavel's Fighter Pullup Program)
+
+**Set it up once:** Settings → **Pull-up program** → enter your current max strict pull-ups (dead hang,
+full range) and, if you want, added weight. The screen tells you which program it picked:
+
+- **Max 5–12:** the 5RM program starting at your max, e.g. max 8 → 8, 7, 6, 5, 4.
+- **Max 13+:** the 15RM program: 12, 10, 8, 6, 4 (steps of 2).
+- **Max 3–4:** Pavel's 3RM program, days 1–12 as published (day 1: 3, 2, 1, 1 … day 11: 5, 4, 3, 2, 1;
+  days 6 and 12 off), then the 5RM program from 5, 4, 3, 2, 1.
+- **Max 1–2:** no program. Log your pull-ups freely and retest your max later.
+
+**Where to log:** on gym days the workout card shows "Pull-ups — today's ladder: 5, 4, 3, 2, 2"
+(still optional), or add the Pull-ups preset in a home session. Only the **first** pull-up session
+each calendar day counts. A later one is saved but marked "didn't count".
+
+**How it moves on:**
+- Each "week" is 5 pull-up sessions. Session 1 is the week's ladder; each next session adds one rep
+  (two in the 15RM version) to one more of the last sets, e.g. 5,4,3,2,1 → 5,4,3,2,2 → 5,4,3,3,2 →
+  5,4,4,3,2 → 5,5,4,3,2. Then the next week starts one rep higher on every set: 6,5,4,3,2.
+- The day after every 5th session shows **"Pull-ups: day off"**.
+- **Missed reps** → the same ladder next time, until it's done. Missed sessions don't count toward
+  the week or the 25.
+- After **25 completed sessions**: "Take a few rest days, then test your max." The next pull-up session is
+  a **max test**. Your new max starts a new program.
+- Stopped for a while? It just carries on where you left off. After 14+ days it shows how long it's been.
+- For strength you can add weight (Pavel: enough to bring your reps down to about three). The ladders work the same.
+
+Pull-ups never change the gym plan.
+
 ### Other screens
 
 **History**: every workout, newest first, tagged with its block (e.g. "3–5 block 1"). Tap one to see,
 change or delete it. Everything recalculates.
 
-**Progress**: per lift, a chart of your top set (all, or only volume / heavy / unload / 3–5 days),
-your best sets, and your **1RMs** over time (entered and tested).
+**Progress** has three parts:
+- **Gym**: per lift, your top set over time (all, or only volume / heavy / unload / 3–5 days),
+  best sets, and your **1RMs** (entered and tested).
+- **Home**: per movement, charts over time (swings & get-ups: bell and reps; press ladders: reps per
+  arm and bell; bodyweight: best set; plank: longest hold) and your bests.
+- **Pull-ups**: your program, total reps per session, and your maxes.
 
 **Settings**:
 - **Training block**: where you are, 5×5 block length (18, 24, 30 or 36 workouts), 3–5 start %
@@ -144,6 +204,7 @@ your best sets, and your **1RMs** over time (entered and tested).
   (offered until you log a workout in the new block).
 - **5×5 working weights**: Volume, Heavy and Step can be changed. Back-off and Unload are calculated.
 - **Round weights to**: 2.5 kg by default (pick 1.25 if you have small plates). Halfway values round down.
+- **Pull-up program**: set it up, or change your max (this restarts the program; logged pull-ups are kept).
 - **Rest timer**: 5 minutes by default.
 - **Sequence**: set which session is next, if you need to.
 - **Backup**: see below.
@@ -169,7 +230,7 @@ Your workouts are stored **only on your iPhone**. If the phone is lost or reset,
 
 1. Ask Claude for the change. Claude edits the files in **Documents → strength-log** and **raises the
    version number** (in `sw.js` and `js/app.js`). That number change tells your iPhone there's an update.
-2. Upload the files to GitHub exactly as in "Getting version 3 onto your iPhone" at the top (steps 2–5).
+2. Upload the files to GitHub exactly as in "Getting version 4 onto your iPhone" at the top (steps 2–5).
 3. Open the app on your iPhone (with internet) and tap **Update now** on the banner.
 
 Your workouts are not touched by updates.
@@ -191,8 +252,16 @@ Your workouts are not touched by updates.
   are tied to their block). 3–5 state replays only the current 3–5 block, from its start 1RMs.
 - Recommendations are never stored: they're recalculated by replaying the logged workouts.
 - v1/v2 data: entry type `light` is read as `unload`; v1 `deload: true` entries are ignored by the rules.
+- **Home sessions** (`js/home.js`): `kind: 'home'` workouts with `items: [{ move, … }]` (movements in
+  `MOVES`, presets in `PRESETS`). v3 sessions with `swings`/`getups` fields are read by `homeItems()`.
+  Sets added with "+1 set" carry a `time`; pre-fill copies only the planned (untimed) sets.
+- **Pull-ups** (`js/pullups.js`): a session record `{ mode: 'ladder'|'test'|'free', ladder, sets, kg }` lives
+  in `workout.pullups` (gym) or a home item with `move: 'pullups'`. `pullupState()` replays counted
+  sessions (first per calendar day, logged after `settings.pullups.at`). `PULLUP_3RM_TABLE` holds the
+  published 3RM program (12 entries, `null` = day off), as provided by the user.
+- Nothing in home.js or pullups.js is read by the gym logic.
 - Tests: `node --test` (`tests/logic.test.js` for the 5×5 rules, rest days and data; `tests/blocks.test.js`
-  for blocks and the 3–5 method).
+  for blocks and the 3–5 method; `tests/v4.test.js` for home sessions and pull-ups).
 - Offline check: `node tools/offline-check.mjs` (needs Edge or Chrome).
 - Run locally: `node tools/serve.mjs` → <http://localhost:8080/>.
 - Releasing: bump `CACHE_VERSION` in `sw.js` and `APP_VERSION` in `js/app.js`. If you add a file, add it to `ASSETS` in `sw.js`.
