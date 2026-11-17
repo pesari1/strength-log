@@ -2,10 +2,12 @@
 import * as L from './logic.js';
 import * as H from './home.js';
 import * as P from './pullups.js';
+import * as B from './body.js';
+import * as X from './xp.js';
 import * as db from './db.js';
 
 // Keep in step with CACHE_VERSION in sw.js (bump both when releasing changes).
-const APP_VERSION = '4.0.0';
+const APP_VERSION = '5.0.1';
 
 const $app = document.getElementById('app');
 const $timer = document.getElementById('timer');
@@ -100,6 +102,13 @@ function getPath(obj, path) {
   return path.split('.').reduce((o, k) => (o == null ? o : o[k]), obj);
 }
 
+function gameOn() {
+  return S.settings.gameMode !== false;
+}
+function fmtXp(n) {
+  return Math.round(n).toLocaleString('en-US');
+}
+
 function toast(msg) {
   $toast.textContent = msg;
   $toast.hidden = false;
@@ -123,6 +132,7 @@ const ICONS = {
   home: '<path d="M3 11.5 12 4l9 7.5"/><path d="M5.5 10v9.5h13V10"/><path d="M10 19.5v-5h4v5"/>',
   history: '<circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/>',
   progress: '<path d="M4 19.5h16"/><path d="m5 15 4.5-5 4 3.5L19 7"/>',
+  profile: '<circle cx="12" cy="8" r="3.5"/><path d="M4.5 20c1.2-3.8 4-5.5 7.5-5.5s6.3 1.7 7.5 5.5"/>',
   settings:
     '<path d="M5 6.5h14M5 12h14M5 17.5h14"/><circle cx="9" cy="6.5" r="2" fill="var(--surface)"/><circle cx="15" cy="12" r="2" fill="var(--surface)"/><circle cx="8" cy="17.5" r="2" fill="var(--surface)"/>',
 };
@@ -141,8 +151,11 @@ function render() {
     homesess: viewHomeSession,
     pusetup: viewPullupSetup,
     blockstart: viewBlockStart,
+    bw: viewBodyweight,
+    profile: viewProfile,
   };
-  const showTabs = !['workout', 'homesess', 'pusetup', 'blockstart'].includes(S.view);
+  if (S.view === 'profile' && !gameOn()) S.view = 'home';
+  const showTabs = !['workout', 'homesess', 'pusetup', 'blockstart', 'bw'].includes(S.view);
   $app.className = 'view-' + S.view;
   $app.innerHTML = views[S.view]() + (showTabs ? tabBar() : '') + (S.sheet ? viewSheet() : '');
   keepAwake(S.view === 'workout' && !S.edit && !!S.draft);
@@ -161,6 +174,7 @@ function tabBar() {
     ['home', 'Home'],
     ['history', 'History'],
     ['progress', 'Progress'],
+    ...(gameOn() ? [['profile', 'Profile']] : []),
     ['settings', 'Settings'],
   ];
   return `<nav class="tabs">${tabs
@@ -221,12 +235,19 @@ function viewHome() {
       </section>`
     : '';
 
+  // "Show more": the rest of this 6-session cycle plus the next cycle (3–5 block: 6 sessions).
+  const moreCount = program.sessions.length === 6 ? 12 - next : 6;
+  const ups = S.upMore ? L.schedule(S.workouts, S.settings, new Date(), Math.max(3, moreCount)).upcoming : sc.upcoming;
   const upcoming = `<section class="card">
       <h3>Coming up</h3>
-      <div class="upcoming">${sc.upcoming
-        .map((u) => `<div class="up-row"><span class="up-date">${fmtDue(u.date)}</span><span>${esc(u.name)}</span></div>`)
+      <div class="upcoming">${ups
+        .map(
+          (u, i) => `<button class="up-row up-btn" data-action="up-preview" data-v="${i}" data-idx="${u.sessionIndex}" data-date="${u.date.toISOString()}">
+            <span class="up-date">${fmtDue(u.date)}</span><span>${esc(u.name)}</span><span class="chev">›</span></button>`
+        )
         .join('')}</div>
-      <p class="why">If you train on each due day, with a rest day in between. Moves with you when you log.</p>
+      <button class="link" data-action="up-more">${S.upMore ? 'Show less' : 'Show more'}</button>
+      <p class="why">If you train on each due day, with a rest day in between. Moves with you when you log. Tap one to see it.</p>
     </section>`;
 
   let main;
@@ -279,14 +300,30 @@ function viewHome() {
 
   return `<header class="top"><h1>Strength Log</h1>${blockLine}</header>
   <main class="wrap">
-    ${updateBanner()}${resume}${backup}${rest}
+    ${updateBanner()}${resume}${backup}${
+      B.bwDue(S.workouts)
+        ? `<div class="banner bw-banner"><p><b>Log your bodyweight.</b> ${
+            B.lastBw(S.workouts) ? `Last entry ${daysAgo(B.lastBw(S.workouts).date)}.` : 'Once a week is enough.'
+          }</p><button class="btn primary block" data-action="bw-new">Log bodyweight</button></div>`
+        : ''
+    }${rest}
     ${main}
     ${upcoming}
     <button class="card kb-btn" data-action="home-open">
-      <div><div class="k1">${todaysHome() ? "Continue today's home session" : 'Home session'}</div>
-      <div class="k2">Simple &amp; Sinister, press ladders, bodyweight, pull-ups, custom · doesn't change the gym plan</div></div>
+      <div><div class="k1">New home session</div>
+      <div class="k2">Simple &amp; Sinister, press ladders, bodyweight, pull-ups, custom · combine any · doesn't change the gym plan</div></div>
       <span class="chev">›</span>
     </button>
+    ${(() => {
+      const t = todaysHomes();
+      if (!t.length) return '';
+      return `<section class="card"><h3>Today's home sessions</h3>${t
+        .map(
+          (w) => `<button class="up-row up-btn" data-action="home-continue" data-v="${esc(w.id)}">
+            <span class="up-date">${fmtTime(w.date)}</span><span>${esc(homeTitle(w))}</span><span class="chev">Continue ›</span></button>`
+        )
+        .join('')}</section>`;
+    })()}
     <p class="muted center small">${
       last
         ? `Last gym session: ${esc(L.workoutTitle(last))} · ${fmtDate(last.date)} (${daysAgo(last.date)})`
@@ -394,9 +431,14 @@ function viewPullupSetup() {
 
 // ---------------------------------------------------------------- home sessions
 
-function todaysHome() {
+function homeTitle(w) {
+  const names = H.homeItems(w).map((it) => (it.move === 'custom' ? it.name || 'Custom' : H.MOVES[it.move]?.name)).filter(Boolean);
+  return names.join(', ') || 'Home session';
+}
+
+function todaysHomes() {
   const today = L.localDay(new Date()).getTime();
-  return L.sortByDate(S.workouts.filter((w) => w.kind === 'home' && L.localDay(w.date).getTime() === today)).pop() || null;
+  return L.sortByDate(S.workouts.filter((w) => w.kind === 'home' && L.localDay(w.date).getTime() === today));
 }
 
 function addMove(move) {
@@ -416,15 +458,9 @@ function addPreset(id) {
   S.homeDirty = true;
 }
 
-/** Opens today's home session if there is one (for practice sets through the day), else a new one. */
+/** Starts a new home session (any number per day), optionally with a preset. */
 function openHome(preset) {
-  const t = todaysHome();
-  if (t) {
-    const { swings, getups, ...rest } = clone(t);
-    S.home = { ...rest, items: clone(H.homeItems(t)), _editing: true };
-  } else {
-    S.home = { id: L.makeId(), kind: 'home', date: null, items: [], minutes: null, notes: '' };
-  }
+  S.home = { id: L.makeId(), kind: 'home', date: null, items: [], minutes: null, notes: '' };
   S.homeBack = 'home';
   S.homeDirty = false;
   if (preset) addPreset(preset);
@@ -433,6 +469,17 @@ function openHome(preset) {
     S.sheet = { kind: 'presets' };
     render();
   }
+}
+
+/** Opens a saved home session to add to it (e.g. practice sets later the same day). */
+function openSavedHome(id, back = 'home') {
+  const w = S.workouts.find((x) => x.id === id);
+  if (!w) return;
+  const { swings, getups, ...rest } = clone(w);
+  S.home = { ...rest, items: clone(H.homeItems(w)), _editing: true };
+  S.homeBack = back;
+  S.homeDirty = false;
+  go('homesess');
 }
 
 function miniStep(action, path, val, step, label) {
@@ -542,6 +589,7 @@ async function saveHome() {
     h.createdAt = Date.now();
   } else h.updatedAt = Date.now();
   for (const k of Object.keys(h)) if (k.startsWith('_')) delete h[k];
+  const before = gameOn() ? X.xpLedger(S.workouts, S.settings).total : 0;
   if (editing) S.workouts = S.workouts.map((x) => (x.id === h.id ? h : x));
   else S.workouts.push(h);
   await saveWorkouts();
@@ -550,6 +598,170 @@ async function saveHome() {
   S.homeDirty = false;
   go(back);
   toast('Home session saved');
+  if (!editing) showFinishCard(h.id, before);
+}
+
+// ---------------------------------------------------------------- profile (game layer)
+
+// Level 99 badge (provided by you): shown next to your name once you reach level 99.
+const BADGE_99_SRC = 'icons/badge99.webp';
+
+function beltHtml(bi, big) {
+  const marks = Array.from({ length: 4 }, (_, i) => `<span class="stripe ${i < bi.stripes ? 'on' : ''}"></span>`).join('');
+  const degrees = bi.degrees ? Array.from({ length: bi.degrees }, () => '<span class="degree"></span>').join('') : '';
+  return `<div class="belt belt-${bi.belt.id} ${big ? 'big' : ''}" role="img" aria-label="${bi.belt.name} belt, ${bi.stripes} stripe${bi.stripes === 1 ? '' : 's'}${bi.degrees ? `, ${bi.degrees} degree${bi.degrees > 1 ? 's' : ''}` : ''}">
+    <span class="belt-tab">${bi.degrees ? degrees : marks}</span></div>`;
+}
+
+function xpBar(pct) {
+  return `<div class="xpbar"><div class="xpfill" style="width:${Math.max(0, Math.min(100, pct * 100)).toFixed(1)}%"></div></div>`;
+}
+
+function viewProfile() {
+  const led = X.xpLedger(S.workouts, S.settings);
+  const li = X.levelInfo(led.total);
+  const bi = X.beltInfo(led.total);
+  const sc = L.schedule(S.workouts, S.settings);
+  const badge = bi.badge99 && BADGE_99_SRC ? `<img class="badge99" src="${BADGE_99_SRC}" alt="Level 99">` : '';
+  const stripeTxt = `${bi.stripes} stripe${bi.stripes === 1 ? '' : 's'}`;
+  const recent = led.entries.slice(-20).reverse();
+  const late = sc.lastDate ? L.daysBetween(sc.due, new Date()) : null;
+  let streakNote = 'Your first gym session starts the streak.';
+  if (sc.lastDate) {
+    if (late < 0) streakNote = `Next session due ${fmtDue(sc.due)} — on that day for the full bonus.`;
+    else if (late === 0) streakNote = 'Due today — train today for the full bonus.';
+    else if (late === 1) streakNote = 'Due yesterday — today still gives half the bonus and keeps the streak.';
+    else streakNote = 'The streak starts again from your next session.';
+  }
+  return `<header class="top"><h1>Profile</h1></header>
+    <main class="wrap">
+      <section class="card profile-head">
+        <div class="pname">${esc(S.settings.name || 'You')} ${badge}</div>
+        ${beltHtml(bi, true)}
+        <p><b>${bi.belt.name} belt</b> · ${bi.degrees ? `${bi.degrees} degree${bi.degrees > 1 ? 's' : ''}` : stripeTxt} · <b>Level ${li.level}</b> · ${fmtXp(led.total)} XP</p>
+      </section>
+      <section class="card">
+        <h3>Level ${li.level}</h3>
+        ${xpBar(li.pct)}
+        <p class="calc">${
+          li.to ? `<b>${fmtXp(li.toNext)}</b> XP to level ${li.level + 1}` : 'Level 99 — XP keeps counting'
+        }${bi.toNextStripe != null ? ` · <b>${fmtXp(bi.toNextStripe)}</b> XP to the next stripe` : ''}</p>
+      </section>
+      <section class="card">
+        <h3>Belt</h3>
+        <p>${bi.belt.name} belt, ${bi.degrees ? `${bi.degrees} degree${bi.degrees > 1 ? 's' : ''}` : stripeTxt}</p>
+        <p class="calc">${
+          bi.level >= 99
+            ? bi.toNextDegree != null
+              ? `<b>${fmtXp(bi.toNextDegree)}</b> XP to the next degree (every 4,000,000 XP, up to 6)`
+              : 'All 6 degrees earned'
+            : `<b>${fmtXp(bi.toNextBelt)}</b> XP to ${bi.nextBelt ? `${bi.nextBelt.name.toLowerCase()} belt (level ${bi.nextBelt.from})` : 'level 99'}`
+        }</p>
+        <p class="why">White → blue at level 83 → purple 91 → brown 95 → black 98. Four stripes per belt.</p>
+      </section>
+      <section class="card">
+        <h3>On-time streak</h3>
+        <p><b>${led.streak}</b> session${led.streak === 1 ? '' : 's'} · bonus <b>+${Math.round(led.bonusPct * 100)}%</b> (max +50%)</p>
+        <p class="why">${esc(streakNote)}</p>
+      </section>
+      <section class="card">
+        <h3>Recent XP</h3>
+        ${
+          recent.length
+            ? `<div class="xplist">${recent
+                .map(
+                  (e) => `<div class="xprow"><div class="xprow-top"><span>${esc(e.label)}</span><b>+${fmtXp(e.total)}</b></div>
+                  <div class="why">${fmtDate(e.date)} · ${esc(X.breakdown(e, fmtXp))}${e.timing ? ` · ${esc(e.timing)}` : ''}</div></div>`
+                )
+                .join('')}</div>`
+            : '<p class="muted">Log a session to earn XP.</p>'
+        }
+      </section>
+    </main>`;
+}
+
+/** The small card after finishing a session: XP earned and level progress. */
+function showFinishCard(refId, beforeTotal) {
+  if (!gameOn()) return;
+  S.sheet = { kind: 'finish', refId, before: beforeTotal };
+  render();
+}
+
+function finishCardHtml(sh) {
+  const led = X.xpLedger(S.workouts, S.settings);
+  const mine = X.xpFor(led, sh.refId);
+  const earned = mine.reduce((s, e) => s + e.total, 0);
+  const li = X.levelInfo(led.total);
+  const bi = X.beltInfo(led.total);
+  const beforeLv = X.levelForXp(sh.before);
+  return `<h3>+${fmtXp(earned)} XP</h3>
+    ${mine
+      .map((e) => `<p class="center"><b>${esc(e.label)}</b>: ${esc(X.breakdown(e, fmtXp))}</p>${e.timing && e.kind === 'gym' ? `<p class="why center">${esc(e.timing)}</p>` : ''}`)
+      .join('') || '<p class="why center">No XP for this one.</p>'}
+    ${li.level > beforeLv ? `<p class="center levelup">Level up! ${beforeLv} → ${li.level}</p>` : ''}
+    <p class="center">Level ${li.level} · ${bi.belt.name} belt, ${bi.stripes} stripe${bi.stripes === 1 ? '' : 's'}</p>
+    ${xpBar(li.pct)}
+    <p class="calc center">${bi.toNextStripe != null ? `${fmtXp(bi.toNextStripe)} XP to the next stripe` : li.to ? `${fmtXp(li.toNext)} XP to level ${li.level + 1}` : ''}</p>`;
+}
+
+// ---------------------------------------------------------------- bodyweight
+
+function openBodyweight(id) {
+  const w = id && S.workouts.find((x) => x.id === id);
+  if (w) S.bw = { ...clone(w), _editing: true };
+  else {
+    const last = B.lastBw(S.workouts);
+    S.bw = { id: L.makeId(), kind: 'bw', date: null, kg: last ? last.kg : 80 };
+  }
+  S.bwBack = id ? 'history' : S.view;
+  go('bw');
+}
+
+function viewBodyweight() {
+  const b = S.bw;
+  if (!b) return viewHome();
+  return `<header class="top bar">
+      <button class="btn ghost" data-action="bw-back">‹ Back</button>
+      <div class="title"><div class="t">Bodyweight</div><div class="sub">${b._editing ? 'Editing · ' + fmtDate(b.date) : 'Weekly entry'}</div></div>
+      <button class="btn primary sm" data-action="bw-save">Save</button>
+    </header>
+    <main class="wrap">
+      <section class="card">
+        <p class="why">Best compared week to week: after waking and using the bathroom, before eating.</p>
+        <div class="group-head"><span class="glabel">Bodyweight</span>
+          <div class="stepper">
+            <button class="step" data-action="bw-step" data-v="-0.1" aria-label="Less">−</button>
+            <input class="wt" type="text" inputmode="decimal" data-bw value="${B.roundBw(b.kg).toFixed(1)}" aria-label="Bodyweight in kg">
+            <span class="unit">kg</span>
+            <button class="step" data-action="bw-step" data-v="0.1" aria-label="More">+</button>
+          </div></div>
+        <label class="lbl" for="bwdate">Date &amp; time</label>
+        <input id="bwdate" type="datetime-local" data-bwdate value="${toLocalInput(b.date)}">
+      </section>
+      <button class="btn primary big block" data-action="bw-save">Save bodyweight</button>
+      ${b._editing ? '<button class="btn danger block" data-action="bw-delete">Delete this entry</button>' : ''}
+    </main>`;
+}
+
+async function saveBodyweight() {
+  const b = clone(S.bw);
+  const editing = !!b._editing;
+  b.kg = B.roundBw(b.kg);
+  if (!(b.kg > 0)) return toast('Please enter your bodyweight');
+  if (!editing) {
+    b.date = b._dateTouched && b.date ? b.date : new Date().toISOString();
+    b.createdAt = Date.now();
+  } else b.updatedAt = Date.now();
+  for (const k of Object.keys(b)) if (k.startsWith('_')) delete b[k];
+  const before = gameOn() ? X.xpLedger(S.workouts, S.settings).total : 0;
+  if (editing) S.workouts = S.workouts.map((x) => (x.id === b.id ? b : x));
+  else S.workouts.push(b);
+  await saveWorkouts();
+  const back = editing ? 'history' : S.bwBack === 'progress' ? 'progress' : 'home';
+  S.bw = null;
+  go(back);
+  const gained = gameOn() && !editing ? X.xpLedger(S.workouts, S.settings).total - before : 0;
+  toast(`Bodyweight saved${gained > 0 ? ` · +${fmtXp(gained)} XP` : ''}`);
 }
 
 // ---------------------------------------------------------------- workout logging
@@ -700,6 +912,11 @@ function viewWorkout() {
     </header>
     <main class="wrap">
       <p class="hint">Tap a set when done · tap again = one rep less · hold = pick reps</p>
+      <section class="card fed"><div class="setting-row"><span class="glabel">Ate before training?</span>
+        <div class="seg">
+          <button class="${d.fed === true ? 'on' : ''}" data-action="fed" data-v="1">Yes</button>
+          <button class="${d.fed === false ? 'on' : ''}" data-action="fed" data-v="0">No</button>
+        </div></div></section>
       ${cardioCard(d)}
       ${d.lifts.map((e, li) => liftCard(e, li, d)).join('')}
       ${pullupsCard(d)}
@@ -832,6 +1049,7 @@ async function finishWorkout() {
   w.extras = (w.extras || []).filter((x) => (x.name || '').trim() || x.sets.length);
   for (const k of Object.keys(w)) if (k.startsWith('_')) delete w[k];
 
+  const before = gameOn() ? X.xpLedger(S.workouts, S.settings).total : 0;
   if (editing) S.workouts = S.workouts.map((x) => (x.id === w.id ? w : x));
   else S.workouts.push(w);
   await saveWorkouts();
@@ -846,6 +1064,7 @@ async function finishWorkout() {
     go('home');
     const sc = L.schedule(S.workouts, S.settings);
     toast(sc.blockDone ? 'Saved! Block finished — set up the next block on Home.' : `Saved! Next up: ${sc.nextName}`);
+    showFinishCard(w.id, before);
   }
 }
 
@@ -1039,6 +1258,7 @@ function pullupSummary(rec, counts) {
 }
 
 function summary(w, counted) {
+  if (w.kind === 'bw') return `${B.roundBw(w.kg).toFixed(1)} kg`;
   if (w.kind === 'home') {
     const p = H.homeItems(w)
       .map((it) => (it.move === 'pullups' ? pullupSummary(it, counted.get(w.id)) : H.itemSummary(it)))
@@ -1070,7 +1290,7 @@ function viewHistory() {
     .map((w) => {
       const m = new Date(w.date).toLocaleDateString(undefined, { month: 'long', year: 'numeric' });
       const head = m !== month ? `<div class="month">${(month = m)}</div>` : '';
-      const title = w.kind === 'home' ? 'Home session' : esc(L.workoutTitle(w));
+      const title = w.kind === 'home' ? 'Home session' : w.kind === 'bw' ? 'Bodyweight' : esc(L.workoutTitle(w));
       return `${head}<button class="hrow" data-action="h-open" data-v="${esc(w.id)}">
         <div class="hdate">${fmtDate(w.date)} · ${fmtTime(w.date)} ${blockTag(w)}</div>
         <div class="htitle">${title}</div>
@@ -1085,11 +1305,9 @@ function openHistory(id) {
   const w = S.workouts.find((x) => x.id === id);
   if (!w) return;
   if (w.kind === 'home') {
-    const { swings, getups, ...rest } = clone(w);
-    S.home = { ...rest, items: clone(H.homeItems(w)), _editing: true };
-    S.homeBack = 'history';
-    S.homeDirty = false;
-    go('homesess');
+    openSavedHome(id, 'history');
+  } else if (w.kind === 'bw') {
+    openBodyweight(w.id);
   } else {
     S.edit = { ...clone(w), _editing: true };
     S.editDirty = false;
@@ -1257,13 +1475,25 @@ function progressPullups() {
     <section class="card"><h3>Max reps</h3>${listTable(tests, 'Your tested maxes will be listed here.')}</section>`;
 }
 
+function progressBody() {
+  const all = B.bwEntries(S.workouts);
+  const pts = all.map((b) => ({ date: b.date, value: B.roundBw(b.kg), head: `${B.roundBw(b.kg).toFixed(1)} kg` }));
+  const rows = [...all].reverse().map((b) => ({ label: `<b>${B.roundBw(b.kg).toFixed(1)} kg</b>`, date: b.date }));
+  return `<section class="card"><h3>Bodyweight (kg)</h3>
+      ${pts.length ? chartSvg('bw', pts, 'Bodyweight') : '<p class="muted">Log your bodyweight once a week to see it here.</p>'}
+      <button class="btn block" data-action="bw-new">Log bodyweight</button></section>
+    <section class="card"><h3>All entries</h3>${listTable(rows, 'No entries yet.')}
+      <p class="why">Change or delete an entry in History.</p></section>`;
+}
+
 function viewProgress() {
   CHARTS.clear();
   const area = S.progressArea;
-  const body = area === 'home' ? progressHome() : area === 'pullups' ? progressPullups() : progressGym();
+  const body =
+    area === 'home' ? progressHome() : area === 'pullups' ? progressPullups() : area === 'body' ? progressBody() : progressGym();
   return `<header class="top"><h1>Progress</h1></header>
     <main class="wrap">
-      ${segBtns('progressArea', [['gym', 'Gym'], ['home', 'Home'], ['pullups', 'Pull-ups']])}
+      ${segBtns('progressArea', [['gym', 'Gym'], ['home', 'Home'], ['pullups', 'Pull-ups'], ['body', 'Body']])}
       ${body}
     </main>`;
 }
@@ -1362,11 +1592,19 @@ function viewSettings() {
         <label class="btn block file-btn">Import backup file<input type="file" accept=".json,application/json" data-import></label>
       </section>
       <section class="card">
+        <h3>Game mode</h3>
+        ${seg('set-game', [['on', 'On'], ['off', 'Off']], gameOn() ? 'on' : 'off')}
+        <p class="why">XP, levels, belts, the Profile tab and the card after each session. Off = a plain training log. Your XP is always worked out from your log, so nothing is lost when you switch.</p>
+        ${gameOn() ? `<label class="lbl" for="pname">Your name (Profile)</label><input id="pname" type="text" data-name value="${esc(st.name || '')}" placeholder="e.g. Alex">` : ''}
+      </section>
+      <section class="card">
         <h3>Look</h3>
         ${seg('set-theme', [['dark', 'Dark'], ['light', 'Light'], ['auto', 'Match iPhone']], st.theme || 'dark')}
       </section>
       <section class="card small muted">
-        <p>Strength Log ${APP_VERSION} · ${gyms} gym + ${S.workouts.length - gyms} home sessions saved on this device (${db.backend()}).
+        <p>Strength Log ${APP_VERSION} · ${gyms} gym + ${S.workouts.filter((w) => w.kind === 'home').length} home sessions + ${
+          S.workouts.filter((w) => w.kind === 'bw').length
+        } bodyweight entries saved on this device (${db.backend()}).
         ${S.persisted ? 'Storage is protected from automatic clean-up.' : ''}</p>
         <p>Works offline. Open it from the Home Screen icon so you always use the same data.</p>
       </section>
@@ -1464,6 +1702,23 @@ function viewSheet() {
     body = `<h3>${esc(sh.text)}</h3>
       <p class="why center">Your next session is due ${fmtDue(sh.due)} — if you train now, the next due day is worked out from today.</p>
       <button class="btn primary big block" data-action="train-anyway">Train anyway</button>`;
+  } else if (sh.kind === 'preview') {
+    const st = L.blockStatus(S.workouts, S.settings);
+    if (st.done) {
+      body = `<h3>${esc(L.programFor(st.next).sessionName(sh.idx))} · ${fmtDue(sh.date)}</h3>
+        <p class="why center">Set up the ${esc(L.programFor(st.next).name)} first; its weights come from the block start screen.</p>`;
+    } else {
+      const plan = L.planSession(sh.idx, S.workouts, S.settings);
+      body = `<h3>${esc(plan.name)} · ${fmtDue(sh.date)}</h3>
+        <p class="note-warn">Planned — weights can change after your next sessions.</p>
+        ${plan.lifts
+          .map(
+            (l) => `<div class="plan-lift"><div class="plan-row"><span class="lift-name">${liftName(l.lift)}</span>
+              <span class="plan-sets">${liftPlanText(l)}</span></div>
+              ${l.notes.map((n) => `<p class="why">${esc(n)}</p>`).join('')}</div>`
+          )
+          .join('')}`;
+    }
   } else if (sh.kind === 'presets') {
     body = `<h3>Add to this home session</h3>
       <div class="sess-list">${H.PRESETS.map(
@@ -1500,9 +1755,15 @@ function viewSheet() {
         )
         .join('')}</div>
       ${sh.purpose === 'home' ? '<p class="why">After you log it, the sequence carries on from the session you did.</p>' : ''}`;
+  } else if (sh.kind === 'finish') {
+    // One tap anywhere closes it.
+    return `<div class="sheet-backdrop" data-action="sheet-close"></div>
+      <div class="sheet finish-card" role="dialog" aria-modal="true" data-action="sheet-close">${finishCardHtml(sh)}
+      <p class="why center">Tap to close</p></div>`;
   }
+  const closeLabel = sh.kind === 'preview' ? 'Close' : 'Cancel';
   return `<div class="sheet-backdrop" data-action="sheet-close"></div>
-    <div class="sheet" role="dialog" aria-modal="true">${body}<button class="btn block" data-action="sheet-close">Cancel</button></div>`;
+    <div class="sheet" role="dialog" aria-modal="true">${body}<button class="btn block" data-action="sheet-close">${closeLabel}</button></div>`;
 }
 
 // ---------------------------------------------------------------- events
@@ -1788,6 +2049,39 @@ document.addEventListener('click', async (ev) => {
     // --- home sessions
     case 'home-open':
       return openHome(v);
+    case 'home-continue':
+      return openSavedHome(v);
+    case 'fed': {
+      const want = v === '1';
+      d.fed = d.fed === want ? undefined : want; // tap again to clear
+      touched();
+      return render();
+    }
+    case 'bw-new':
+      return openBodyweight();
+    case 'bw-step':
+      S.bw.kg = B.roundBw(Math.max(0, Number(S.bw.kg) + +v));
+      return render();
+    case 'bw-save':
+      return saveBodyweight();
+    case 'bw-back': {
+      const back = S.bw && S.bw._editing ? 'history' : S.bwBack === 'progress' ? 'progress' : 'home';
+      S.bw = null;
+      return go(back);
+    }
+    case 'bw-delete':
+      if (!confirm('Delete this bodyweight entry?')) return;
+      S.workouts = S.workouts.filter((w) => w.id !== S.bw.id);
+      await saveWorkouts();
+      S.bw = null;
+      go('history');
+      return toast('Entry deleted');
+    case 'up-more':
+      S.upMore = !S.upMore;
+      return render();
+    case 'up-preview':
+      S.sheet = { kind: 'preview', idx: +el.dataset.idx, date: el.dataset.date };
+      return render();
     case 'home-add':
       S.sheet = { kind: 'presets' };
       return render();
@@ -1948,6 +2242,10 @@ document.addEventListener('click', async (ev) => {
       S.settings.restSeconds = Math.min(600, Math.max(15, S.settings.restSeconds + +v));
       await saveSettings();
       return render();
+    case 'set-game':
+      S.settings.gameMode = v === 'on';
+      await saveSettings();
+      return render();
     case 'set-theme':
       S.settings.theme = v;
       applyTheme();
@@ -2002,6 +2300,25 @@ document.addEventListener('change', async (ev) => {
       d.date = iso;
       d._dateTouched = true;
       touched();
+    }
+    return;
+  }
+  if (el.matches('[data-name]')) {
+    S.settings.name = el.value.trim().slice(0, 40);
+    await saveSettings();
+    return toast('Name saved');
+  }
+  if (el.matches('[data-bw]')) {
+    const n = num(el.value);
+    if (n != null && n > 0) S.bw.kg = B.roundBw(n);
+    el.value = B.roundBw(S.bw.kg).toFixed(1);
+    return;
+  }
+  if (el.matches('[data-bwdate]')) {
+    const iso = fromLocalInput(el.value);
+    if (iso) {
+      S.bw.date = iso;
+      S.bw._dateTouched = true;
     }
     return;
   }

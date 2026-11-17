@@ -1,6 +1,6 @@
 // Strength Log — service worker: keeps a copy of the app on the phone so it works offline.
 // When you release a change, bump CACHE_VERSION (and APP_VERSION in js/app.js).
-const CACHE_VERSION = 'v4.0.0';
+const CACHE_VERSION = 'v5.0.1';
 const CACHE = 'strength-log-' + CACHE_VERSION;
 
 const ASSETS = [
@@ -13,10 +13,13 @@ const ASSETS = [
   './js/db.js',
   './js/home.js',
   './js/pullups.js',
+  './js/body.js',
+  './js/xp.js',
   './icons/icon-180.png',
   './icons/icon-192.png',
   './icons/icon-512.png',
   './icons/icon-maskable-512.png',
+  './icons/badge99.webp',
 ];
 
 self.addEventListener('install', (event) => {

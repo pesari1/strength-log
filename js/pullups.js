@@ -163,6 +163,7 @@ export function pullupState(workouts, settings, now = new Date(), opts = {}) {
   let st = startState(setup.max, setup.kg, table);
   const tests = [{ date: setup.at, max: Number(setup.max), kg: setup.kg || 0, source: 'setup' }];
   const since = ts(setup.at);
+  const completions = [];
   let last = null;
   for (const r of records) {
     if (!r.counts) continue;
@@ -177,8 +178,10 @@ export function pullupState(workouts, settings, now = new Date(), opts = {}) {
       continue;
     }
     if (st.phase === 'ladder' && rec.mode === 'ladder') {
-      if (ladderComplete(rec)) advance(st, r.date, table);
-      else st.missed = { date: r.date, ladder: rec.ladder };
+      if (ladderComplete(rec)) {
+        advance(st, r.date, table);
+        if (st.phase === 'test') completions.push({ id: r.id, date: r.date }); // 25 ladders done
+      } else st.missed = { date: r.date, ladder: rec.ladder };
     }
   }
 
@@ -202,6 +205,7 @@ export function pullupState(workouts, settings, now = new Date(), opts = {}) {
     progress,
     tests,
     records,
+    completions,
     daysSince,
     longBreakNote: daysSince != null && daysSince >= LONG_BREAK_DAYS ? `${daysSince} days since last pull-up session` : null,
     text: planText(st.phase, ladder, dayOff),

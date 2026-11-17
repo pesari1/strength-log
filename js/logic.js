@@ -316,6 +316,8 @@ export function defaultSettings() {
     rounding: 2.5,
     restSeconds: 300,
     theme: 'dark',
+    gameMode: true, // XP, levels, belts and the Profile tab; off = plain training log
+    name: '', // shown on the Profile tab
     adjustments: [], // weight edits: { at, lift, volume? | heavy?, block? }
     sequenceReset: null, // { at, index, block } — "next session is #index" set by hand
     lastExportAt: null,
@@ -912,7 +914,7 @@ export function editWeight(settings, workouts, liftId, field, value, now = new D
 // =====================================================================================
 
 export function makeBackup(settings, workouts) {
-  return { app: 'strength-log', version: 3, exportedAt: new Date().toISOString(), settings, workouts };
+  return { app: 'strength-log', version: 5, exportedAt: new Date().toISOString(), settings, workouts };
 }
 
 export function readBackup(obj) {
@@ -921,7 +923,7 @@ export function readBackup(obj) {
   }
   return {
     settings: mergeSettings(obj.settings),
-    workouts: obj.workouts.filter((w) => w && (w.kind === 'gym' || w.kind === 'home') && w.id),
+    workouts: obj.workouts.filter((w) => w && (w.kind === 'gym' || w.kind === 'home' || w.kind === 'bw') && w.id),
   };
 }
 

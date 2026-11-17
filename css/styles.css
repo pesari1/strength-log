@@ -393,6 +393,46 @@ textarea { resize: vertical; }
 .rounds { flex: 1; }
 .card-head input { flex: 1; }
 
+/* profile: belts and XP */
+.belt {
+  height: 24px;
+  border-radius: 5px;
+  display: flex;
+  justify-content: flex-end;
+  overflow: hidden;
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.25);
+}
+.belt.big { height: 34px; }
+.belt-white { background: #ecebe6; }
+.belt-blue { background: #2563eb; }
+.belt-purple { background: #7c3aed; }
+.belt-brown { background: #7a4a24; }
+.belt-black { background: #111214; box-shadow: inset 0 0 0 1px #3a3d44; }
+.belt-tab {
+  width: 36%;
+  background: #111214;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+  padding: 0 10%;
+}
+.belt-black .belt-tab { background: #c81e1e; }
+.stripe { width: 6px; height: 70%; background: rgba(255, 255, 255, 0.18); border-radius: 1px; }
+.stripe.on { background: #f5f5f5; }
+.degree { width: 5px; height: 70%; background: #f5f5f5; border-radius: 1px; }
+.pname { font-size: 24px; font-weight: 800; display: flex; align-items: center; gap: 8px; }
+.badge99 { height: 44px; width: auto; }
+.xpbar { height: 12px; border-radius: 6px; background: var(--surface2); overflow: hidden; }
+.xpfill { height: 100%; background: var(--accent); border-radius: 6px; }
+.xplist { display: flex; flex-direction: column; }
+.xprow { border-top: 1px solid var(--line); padding: 10px 0; }
+.xprow:first-child { border-top: 0; }
+.xprow-top { display: flex; justify-content: space-between; gap: 8px; font-weight: 600; }
+.finish-card h3 { font-size: 28px; color: var(--accent); }
+.finish-card .levelup { font-weight: 800; color: var(--good); font-size: 18px; }
+.fed { padding: 10px 16px; }
+
 /* rest days / upcoming */
 .rest { background: color-mix(in srgb, var(--good) 12%, var(--surface)); border-color: color-mix(in srgb, var(--good) 40%, transparent); }
 .rest-line { font-size: 18px; }
@@ -409,6 +449,17 @@ textarea { resize: vertical; }
 .up-row { display: flex; gap: 14px; padding: 8px 0; border-top: 1px solid var(--line); font-variant-numeric: tabular-nums; }
 .up-row:first-child { border-top: 0; }
 .up-date { min-width: 92px; font-weight: 700; }
+.up-btn {
+  width: 100%;
+  background: none;
+  border: 0;
+  border-top: 1px solid var(--line);
+  text-align: left;
+  min-height: 48px;
+  align-items: center;
+}
+.up-btn .chev { margin-left: auto; color: var(--muted); font-size: 14px; }
+.upcoming .up-btn:first-child, .card > h3 + .up-btn { border-top: 0; }
 .wgrid input { text-align: center; padding: 10px 4px; font-weight: 700; font-variant-numeric: tabular-nums; }
 .setting-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
 .file-btn { position: relative; overflow: hidden; }

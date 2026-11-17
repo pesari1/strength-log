@@ -1,14 +1,15 @@
-# Strength Log — your guide (version 4)
+# Strength Log — your guide (version 5)
 
 Strength Log is a workout app for your iPhone. It lives on your phone, works with no internet,
 and tells you what your next gym session is, when it's due, and what weights to use.
 It rotates between two training blocks: a **5×5 block** and a **3–5 block**.
-Alongside the gym plan it logs **home sessions** (kettlebell, bodyweight, custom) and runs
-Pavel's **Fighter Pullup Program**. Neither of those ever changes the gym plan.
+Alongside the gym plan it logs **home sessions** (kettlebell, bodyweight, custom), runs
+Pavel's **Fighter Pullup Program**, and keeps a **weekly bodyweight log**. None of those ever
+changes the gym plan. An optional **game layer** (XP, levels, belts) lives on the Profile tab.
 
 ---
 
-## Getting version 4 onto your iPhone (if you already have an older version)
+## Getting version 5 onto your iPhone (if you already have an older version)
 
 1. On your iPhone, make a backup first: **Settings → Export backup file → Save to Files**.
 2. On your computer, go to <https://github.com> and open your **strength-log** repository.
@@ -20,10 +21,11 @@ Pavel's **Fighter Pullup Program**. Neither of those ever changes the gym plan.
    A banner says **"A new version of the app is ready"** → tap **Update now**.
    - No banner? Swipe the app away completely (swipe up from the bottom and flick it off the top),
      open it again and wait a few seconds. Repeat once if needed.
-7. Check it worked: **Settings** → bottom of the page says **Strength Log 4.0.0**, and the Home
-   screen has a **Home session** card and a **Pull-ups** line in the workout card.
+7. Check it worked: **Settings** → bottom of the page says **Strength Log 5.0.1**, and there is a
+   **Profile** tab at the bottom.
 
-Your logged workouts stay exactly as they are. Older "Home — S&S" sessions show up as home sessions.
+Your logged workouts stay exactly as they are, and the XP for everything you've already logged is
+worked out straight away.
 
 ---
 
@@ -84,7 +86,9 @@ The app has to be on a web address once so your iPhone can install it. GitHub Pa
    - More? **Press and hold** the circle and pick the number.
 3. Different weight? Use **−/+** or type it. On heavy days the back-off set follows the top set (−10%)
    unless you change the back-off yourself.
-4. Optional: **Warm-up cardio**, **Pull-ups 3×5**, **Extra exercises**, **Notes**.
+4. At the top: **Ate before training?** Yes / No (tap again to clear). It's saved with the session
+   for later analytics.
+   Optional: **Warm-up cardio**, **Pull-ups**, **Extra exercises**, **Notes**.
 5. Tap **Finish**. In the 3–5 block the app asks **"Was this tough?"** after each 3×5.
 
 You can close the app mid-workout. It's saved as you go: next time, tap **Continue workout**.
@@ -134,7 +138,8 @@ Later, it offers the 1RMs from your last tests.
 
 ### Home sessions
 
-Tap **Home session** on Home. Pick one or more presets (you can combine them, e.g. S&S + a plank):
+Tap **New home session** on Home. You can log **as many home sessions a day as you like**, and one
+session can combine several presets (e.g. pull-up ladder + press ladders, or S&S + a plank):
 
 - **Simple & Sinister**: warm-up (goblet squat ×5, halo ×5 each way, hip bridge ×5 — tick it when done
   and pick 1–3 rounds), swings (total reps + bell), get-ups (total reps + bell).
@@ -152,8 +157,8 @@ Every movement remembers what you did last time and fills it in. Use the **Sets*
 to change the plan. Tap a set to change or delete it.
 
 **Grease the Groove:** tap **+1 set** whenever you do a practice set during the day. It adds a set like
-the last one, with the time. Save after each one. Later the same day, the Home card says
-**Continue today's home session**, so all the day's sets end up in one log.
+the last one, with the time. Save after each one. Home lists **Today's home sessions**: tap one and
+choose **Continue** to add more sets to it, or start a new session.
 
 Home sessions never change the gym sequence, weights, rest days, due dates or block counts.
 
@@ -186,17 +191,68 @@ each calendar day counts. A later one is saved but marked "didn't count".
 
 Pull-ups never change the gym plan.
 
+### Coming up
+
+The **Coming up** card on Home lists your next sessions with their earliest dates. **Tap one** to see
+its lifts, sets and planned weights (read-only; "Planned — weights can change after your next
+sessions"). **Show more** lists the rest of this 6-session cycle and the next one.
+
+### Weekly bodyweight
+
+Once a week, log your bodyweight (kg, one decimal). It's best compared week to week: after waking and
+using the bathroom, before eating. When 7 or more days have passed (or you've never logged one), Home
+shows **"Log your bodyweight."** It disappears once you log it. Change or delete entries in History,
+and see the chart under Progress → Body. Bodyweight never changes the gym plan.
+
+### Game layer: XP, levels and belts (Profile tab)
+
+Everything here is worked out from your log, including workouts you logged before v5. Edit or delete
+a workout and the XP, level, belt and streak recalculate. Earned XP is never taken away.
+
+| What | XP |
+|---|---|
+| Gym session | 4,000 |
+| Gym session with a 1RM test (3–5 block) | 6,000 |
+| Pull-up max test | 6,000 |
+| Home session: 1st of the day / 2nd / 3rd and later | 1,200 / 600 / 0 |
+| First pull-up ladder of the day (even with missed reps) | 800 |
+| Bodyweight entry (once per 7 days) | 400 |
+| Every 6th gym session in a 5×5 block (a cycle) | +4,000 |
+| A block that ends on its own (not "Switch block now") | +20,000 |
+| Pull-up program finished (25 ladders) | +12,000 |
+
+**On-time bonus:** a gym session is due 2 days after the previous one.
+- On the due day: the streak goes up by 1, and the session gets +5% per streak, up to +50% at 10 in a row.
+- 1 day late: half the bonus, streak kept.
+- 2 or more days late: no bonus, streak back to 0.
+- Training on a rest day (before the due day): no bonus, streak paused.
+- The bonus is shown separately, e.g. "4,000 + 1,200 on-time bonus (streak 6)".
+
+**Levels** follow the exact Old School RuneScape table up to level 99 (level 50 = 101,333 XP,
+level 99 = 13,034,431 XP); XP keeps counting after 99.
+**Belts:** white from level 1, blue 83, purple 91, brown 95, black 98. Each belt has 4 stripes, at
+20/40/60/80% of the way to the next belt. After level 99 the black belt earns a degree every
+4,000,000 XP, up to 6. At level 99 your **level 99 badge** (the Strength cape) appears next to your name.
+
+**Profile** shows your belt, level, XP to the next level, stripe and belt, your on-time streak and
+bonus, and your last 20 XP entries with their breakdown. After you finish a session, a small card
+shows the XP you earned and your level progress (tap to close).
+
+**Game mode** (Settings): off hides the Profile tab and the after-session card, so the app is a plain
+training log. Your name for the Profile is set there too.
+
 ### Other screens
 
-**History**: every workout, newest first, tagged with its block (e.g. "3–5 block 1"). Tap one to see,
-change or delete it. Everything recalculates.
+**History**: every workout, home session and bodyweight entry, newest first; gym workouts are tagged
+with their block (e.g. "3–5 block 1"). Tap one to see, change or delete it. Everything recalculates.
 
-**Progress** has three parts:
+**Progress** has four parts:
 - **Gym**: per lift, your top set over time (all, or only volume / heavy / unload / 3–5 days),
   best sets, and your **1RMs** (entered and tested).
 - **Home**: per movement, charts over time (swings & get-ups: bell and reps; press ladders: reps per
   arm and bell; bodyweight: best set; plank: longest hold) and your bests.
 - **Pull-ups**: your program, total reps per session, and your maxes.
+- **Body**: your bodyweight chart and all entries.
 
 **Settings**:
 - **Training block**: where you are, 5×5 block length (18, 24, 30 or 36 workouts), 3–5 start %
@@ -205,6 +261,7 @@ change or delete it. Everything recalculates.
 - **5×5 working weights**: Volume, Heavy and Step can be changed. Back-off and Unload are calculated.
 - **Round weights to**: 2.5 kg by default (pick 1.25 if you have small plates). Halfway values round down.
 - **Pull-up program**: set it up, or change your max (this restarts the program; logged pull-ups are kept).
+- **Game mode**: on/off, and your name for the Profile.
 - **Rest timer**: 5 minutes by default.
 - **Sequence**: set which session is next, if you need to.
 - **Backup**: see below.
@@ -230,7 +287,7 @@ Your workouts are stored **only on your iPhone**. If the phone is lost or reset,
 
 1. Ask Claude for the change. Claude edits the files in **Documents → strength-log** and **raises the
    version number** (in `sw.js` and `js/app.js`). That number change tells your iPhone there's an update.
-2. Upload the files to GitHub exactly as in "Getting version 4 onto your iPhone" at the top (steps 2–5).
+2. Upload the files to GitHub exactly as in "Getting version 5 onto your iPhone" at the top (steps 2–5).
 3. Open the app on your iPhone (with internet) and tap **Update now** on the banner.
 
 Your workouts are not touched by updates.
@@ -259,9 +316,16 @@ Your workouts are not touched by updates.
   in `workout.pullups` (gym) or a home item with `move: 'pullups'`. `pullupState()` replays counted
   sessions (first per calendar day, logged after `settings.pullups.at`). `PULLUP_3RM_TABLE` holds the
   published 3RM program (12 entries, `null` = day off), as provided by the user.
-- Nothing in home.js or pullups.js is read by the gym logic.
+- **Bodyweight** (`js/body.js`): `{ kind: 'bw', date, kg }` entries in the same workouts list.
+- **Game layer** (`js/xp.js`): `xpLedger()` derives every XP entry from the log (no stored totals);
+  `LEVEL_XP` is the OSRS table; `beltInfo()` gives belt, stripes and degrees. `settings.gameMode`
+  hides it; `BADGE_99_SRC` in app.js points to the level-99 badge image (`icons/badge99.webp`).
+- Nothing in home.js, pullups.js, body.js or xp.js is read by the gym logic.
 - Tests: `node --test` (`tests/logic.test.js` for the 5×5 rules, rest days and data; `tests/blocks.test.js`
-  for blocks and the 3–5 method; `tests/v4.test.js` for home sessions and pull-ups).
+  for blocks and the 3–5 method; `tests/v4.test.js` for home sessions and pull-ups; `tests/v5.test.js`
+  for XP, levels, belts, bodyweight and the v4 → v5 upgrade).
 - Offline check: `node tools/offline-check.mjs` (needs Edge or Chrome).
+- Upgrade check: `node tools/upgrade-check.mjs` fills the app's storage with realistic older data, starts
+  the current app on it and checks every record is kept unchanged. Run it before every release.
 - Run locally: `node tools/serve.mjs` → <http://localhost:8080/>.
 - Releasing: bump `CACHE_VERSION` in `sw.js` and `APP_VERSION` in `js/app.js`. If you add a file, add it to `ASSETS` in `sw.js`.

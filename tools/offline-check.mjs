@@ -120,7 +120,7 @@ const swInfo = await c.evaluate(`(async () => {
   return { controlled: !!navigator.serviceWorker.controller, cache: keys[0], files: n };
 })()`);
 check('service worker installed and controlling the page', swInfo.controlled, JSON.stringify(swInfo));
-check('all 13 app files cached', swInfo.files === 13, `${swInfo.files} files`);
+check('all 16 app files cached', swInfo.files === 16, `${swInfo.files} files`);
 await c.evaluate(`(async () => {
   const db = await import('/js/db.js');
   const ws = (await db.get('workouts')) || [];
@@ -152,7 +152,7 @@ const off = await c.evaluate(`(async () => {
   const ws = (await db.get('workouts')) || [];
   return { title: document.title, home: document.querySelector('.card h2')?.textContent || null, tabs: document.querySelectorAll('.tab').length, saved: ws.some(w => w.id === 'offline-test') };
 })()`);
-check('app opens with no server/internet', off.title === 'Strength Log' && !!off.home && off.tabs === 4, JSON.stringify(off));
+check('app opens with no server/internet', off.title === 'Strength Log' && !!off.home && off.tabs >= 4, JSON.stringify(off));
 check('data survives closing the app', off.saved);
 await c.evaluate(`document.querySelector('[data-action=start]').click(), true`);
 await sleep(300);
