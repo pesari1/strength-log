@@ -1,5 +1,6 @@
 // Upgrade check: fills the app's storage with realistic data from the previous version
-// (v1–v4 shapes: old "light" days, a 3–5 block, home sessions, pull-ups), starts the current
+// (v1–v5 shapes: old "light" days, a 3–5 block, home sessions, pull-ups, v5 bodyweight entries and
+// "ate before training?"), starts the current
 // app on top of it, and checks nothing was lost or changed.
 // Run: node tools/upgrade-check.mjs  (needs Microsoft Edge or Google Chrome)
 import { spawn, spawnSync } from 'node:child_process';
@@ -27,8 +28,8 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const at = (y, m, d, h = 18) => new Date(y, m - 1, d, h).toISOString();
 function buildData() {
   let s = { ...L.defaultSettings(), pullups: { max: 7, kg: 0, at: at(2026, 6, 1, 6) }, restSeconds: 240, theme: 'dark', lastExportAt: at(2026, 9, 1) };
-  delete s.gameMode;
-  delete s.name;
+  s.gameMode = true; // v5 settings
+  s.name = 'Test';
   const W = [];
   let day = 0;
   const date = () => at(2026, 6, 2 + (day += 2));
@@ -39,6 +40,7 @@ function buildData() {
     w.date = date();
     w.createdAt = Date.parse(w.date);
     w.notes = i === 3 ? 'Felt strong — "tough" day' : '';
+    if (i % 4 !== 3) w.fed = i % 4 !== 1; // v5: yes / no / not set
     if (i % 6 === 2) {
       const rec = newPullupRecord(pullupState(W, s, new Date(w.date)));
       rec.sets.forEach((x) => (x.done = true));
@@ -73,6 +75,8 @@ function buildData() {
     items.push({ move: 'pullups', ...pu });
     W.push({ id: 'h' + i, kind: 'home', date: d, createdAt: Date.parse(d), items, minutes: 30, notes: '' });
   }
+  // v5 weekly bodyweight entries.
+  for (let i = 0; i < 8; i++) W.push({ id: 'bw' + i, kind: 'bw', date: at(2026, 6, 3 + i * 7, 7), createdAt: Date.parse(at(2026, 6, 3 + i * 7, 7)), kg: 83.4 - i * 0.3 });
   return { settings: s, workouts: W };
 }
 
@@ -151,8 +155,12 @@ try {
   check('History lists every workout', hist === data.workouts.length, `${hist} rows`);
   const prof = await c.ev(`(async () => { document.querySelector('[data-action=tab][data-v=profile]').click(); await new Promise(r => setTimeout(r, 200)); return { text: document.querySelector('main').innerText.slice(0, 200), err: document.body.innerText.includes('went wrong') }; })()`);
   check('Profile shows XP from the old workouts', !prof.err && /Level \d+/.test(prof.text) && /[\d,]+ XP/.test(prof.text), prof.text.replace(/\n+/g, ' | ').slice(0, 120));
-  const prog = await c.ev(`(async () => { const out = []; document.querySelector('[data-action=tab][data-v=progress]').click(); await new Promise(r => setTimeout(r, 100)); for (const a of ['gym','home','pullups','body']) { document.querySelector('[data-action=prog][data-path=progressArea][data-v=' + a + ']').click(); await new Promise(r => setTimeout(r, 100)); out.push(document.body.innerText.includes('went wrong') ? a + ':ERR' : a + ':ok'); } return out.join(' '); })()`);
+  const prog = await c.ev(`(async () => { const out = []; document.querySelector('[data-action=tab][data-v=progress]').click(); await new Promise(r => setTimeout(r, 100)); for (const a of ['gym','records','home','pullups','body']) { document.querySelector('[data-action=prog][data-path=progressArea][data-v=' + a + ']').click(); await new Promise(r => setTimeout(r, 100)); out.push(document.body.innerText.includes('went wrong') ? a + ':ERR' : a + ':ok'); } return out.join(' '); })()`);
   check('every Progress section opens', !prog.includes('ERR'), prog);
+  const ach = await c.ev(`(async () => { const sl = (ms) => new Promise(r => setTimeout(r, ms)); document.querySelector('[data-action=tab][data-v=profile]').click(); await sl(150); const card = [...document.querySelectorAll('section.card')].find((x) => x.querySelector('h3')?.textContent === 'Achievements'); const head = card ? card.querySelector('.card-head').innerText : ''; document.querySelector('[data-action=tab][data-v=achievements]').click(); await sl(200); const rows = document.querySelectorAll('.ach-row').length; const earned = document.querySelectorAll('.ach-row.done').length; return { head, rows, earned, err: document.body.innerText.includes('went wrong') }; })()`);
+  check('achievements worked out from the old workouts', !ach.err && ach.rows > 80 && ach.earned > 5, JSON.stringify(ach));
+  const tvn = await c.ev(`(async () => { document.querySelector('[data-action=tab][data-v=profile]').click(); await new Promise(r => setTimeout(r, 100)); document.querySelector('[data-action=tab][data-v=history]').click(); await new Promise(r => setTimeout(r, 150)); return document.querySelector('.tvn')?.innerText.split(String.fromCharCode(10)).slice(0, 3).join(' | ') || ''; })()`);
+  check('History shows "Then vs now"', /Then vs now/.test(tvn), tvn);
   // Log something new; the old records must stay exactly as they were.
   await c.ev(`(async () => { const sl = (ms) => new Promise(r => setTimeout(r, ms)); document.querySelector('[data-action=tab][data-v=home]').click(); await sl(100); document.querySelector('[data-action=home-open]').click(); await sl(100); document.querySelector('[data-action=preset-add][data-v=ss]').click(); await sl(100); document.querySelector('[data-action=wu-done]').click(); await sl(50); document.querySelector('[data-action=home-save]').click(); await sl(500); return 1; })()`);
   const card = await c.ev(`document.querySelector('.finish-card')?.innerText || ''`);

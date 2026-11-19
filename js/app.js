@@ -4,10 +4,11 @@ import * as H from './home.js';
 import * as P from './pullups.js';
 import * as B from './body.js';
 import * as X from './xp.js';
+import * as A from './achievements.js';
 import * as db from './db.js';
 
 // Keep in step with CACHE_VERSION in sw.js (bump both when releasing changes).
-const APP_VERSION = '5.0.1';
+const APP_VERSION = '6.0.0';
 
 const $app = document.getElementById('app');
 const $timer = document.getElementById('timer');
@@ -29,6 +30,8 @@ const S = {
   progressLift: 'squat',
   progressType: 'all',
   blockDraft: null, // values on the block start screen
+  achSort: 'easy', // full achievements list: easy | hard | close
+  achFilter: 'all', // all | done | todo
   persisted: false,
   updateWorker: null,
 };
@@ -153,9 +156,10 @@ function render() {
     blockstart: viewBlockStart,
     bw: viewBodyweight,
     profile: viewProfile,
+    achievements: viewAchievements,
   };
-  if (S.view === 'profile' && !gameOn()) S.view = 'home';
-  const showTabs = !['workout', 'homesess', 'pusetup', 'blockstart', 'bw'].includes(S.view);
+  if ((S.view === 'profile' || S.view === 'achievements') && !gameOn()) S.view = 'home';
+  const showTabs = !['workout', 'homesess', 'pusetup', 'blockstart', 'bw', 'achievements'].includes(S.view);
   $app.className = 'view-' + S.view;
   $app.innerHTML = views[S.view]() + (showTabs ? tabBar() : '') + (S.sheet ? viewSheet() : '');
   keepAwake(S.view === 'workout' && !S.edit && !!S.draft);
@@ -537,7 +541,14 @@ function homeItemCard(it, i) {
   const quick = m.total
     ? `<div class="quick">${miniStep('q-reps', i, planned[0] ? planned[0].reps : '–', step, 'Total reps')}</div>`
     : `<div class="quick">${miniStep('q-sets', i, planned.length, 1, 'Sets')}${miniStep('q-reps', i, planned[0] ? planned[0][key] : '–', 1, secs ? 'Seconds' : 'Reps')}</div>`;
-  return `<section class="card">${head}${about}${variation}${kgRow}${quick}
+  const dur = m.total
+    ? `<div class="dur-row"><span class="glabel">Time (optional)</span>
+        <input class="dur-in" type="text" inputmode="numeric" data-hdur="${i}.m" value="${it.durationSec > 0 ? Math.floor(it.durationSec / 60) : ''}" placeholder="min" aria-label="Minutes">
+        <span>:</span>
+        <input class="dur-in" type="text" inputmode="numeric" data-hdur="${i}.s" value="${it.durationSec > 0 ? String(it.durationSec % 60).padStart(2, '0') : ''}" placeholder="sec" aria-label="Seconds"></div>
+      <p class="why">${it.move === 'swings' ? "Pavel's Simple: 100 one-arm swings in 5:00." : "Pavel's Simple: 10 get-ups in 10:00."} Only needed for those achievements.</p>`
+    : '';
+  return `<section class="card">${head}${about}${variation}${kgRow}${quick}${dur}
     <div class="chips">${it.sets
       .map((s, si) => `<button class="chip-set" data-action="hs-edit" data-path="${i}.${si}">${s[key]}${secs ? 's' : ''}${s.time ? `<small>${fmtTime(s.time)}</small>` : ''}</button>`)
       .join('')}</div>
@@ -589,7 +600,7 @@ async function saveHome() {
     h.createdAt = Date.now();
   } else h.updatedAt = Date.now();
   for (const k of Object.keys(h)) if (k.startsWith('_')) delete h[k];
-  const before = gameOn() ? X.xpLedger(S.workouts, S.settings).total : 0;
+  const before = editing ? null : xpSnapshot();
   if (editing) S.workouts = S.workouts.map((x) => (x.id === h.id ? h : x));
   else S.workouts.push(h);
   await saveWorkouts();
@@ -664,6 +675,7 @@ function viewProfile() {
         <p><b>${led.streak}</b> session${led.streak === 1 ? '' : 's'} · bonus <b>+${Math.round(led.bonusPct * 100)}%</b> (max +50%)</p>
         <p class="why">${esc(streakNote)}</p>
       </section>
+      ${achievementsCard(led.achievements)}
       <section class="card">
         <h3>Recent XP</h3>
         ${
@@ -680,28 +692,161 @@ function viewProfile() {
     </main>`;
 }
 
-/** The small card after finishing a session: XP earned and level progress. */
-function showFinishCard(refId, beforeTotal) {
-  if (!gameOn()) return;
-  S.sheet = { kind: 'finish', refId, before: beforeTotal };
+/** What the game layer looked like before saving (to show what a session added). */
+function xpSnapshot() {
+  if (!gameOn()) return null;
+  const led = X.xpLedger(S.workouts, S.settings);
+  return { total: led.total, ach: new Set(led.achievements.filter((a) => a.earned).map((a) => a.def.id)) };
+}
+
+/** The small card after finishing a session: XP earned, new achievements and records, level progress. */
+function showFinishCard(refId, before) {
+  if (!gameOn() || !before) return;
+  S.sheet = { kind: 'finish', refId, before };
   render();
 }
 
 function finishCardHtml(sh) {
   const led = X.xpLedger(S.workouts, S.settings);
-  const mine = X.xpFor(led, sh.refId);
-  const earned = mine.reduce((s, e) => s + e.total, 0);
+  const mine = X.xpFor(led, sh.refId).filter((e) => e.kind !== 'ach');
+  const fresh = led.achievements.filter((a) => a.earned && !sh.before.ach.has(a.def.id));
+  const earned = mine.reduce((s, e) => s + e.total, 0) + fresh.reduce((s, a) => s + a.xp, 0);
+  // One line per lift and weight: "Deadlift 160 kg — 1, 3 and 5 reps (was 145)".
+  const records = [];
+  for (const r of A.newRecords(S.workouts, sh.refId)) {
+    const g = records.find((x) => x.lift === r.lift && x.weight === r.weight);
+    if (g) g.reps.push(r.reps), g.prev.push(r.prev);
+    else records.push({ lift: r.lift, weight: r.weight, reps: [r.reps], prev: [r.prev] });
+  }
+  const andList = (xs) => (xs.length > 1 ? `${xs.slice(0, -1).join(', ')} and ${xs[xs.length - 1]}` : String(xs[0]));
+  const wasTxt = (ps) => {
+    const lo = Math.min(...ps);
+    const hi = Math.max(...ps);
+    return lo === hi ? kg(lo) : `${kg(lo)}–${kg(hi)}`;
+  };
+  const near = A.closest(led.achievements);
   const li = X.levelInfo(led.total);
   const bi = X.beltInfo(led.total);
-  const beforeLv = X.levelForXp(sh.before);
+  const beforeLv = X.levelForXp(sh.before.total);
   return `<h3>+${fmtXp(earned)} XP</h3>
-    ${mine
-      .map((e) => `<p class="center"><b>${esc(e.label)}</b>: ${esc(X.breakdown(e, fmtXp))}</p>${e.timing && e.kind === 'gym' ? `<p class="why center">${esc(e.timing)}</p>` : ''}`)
-      .join('') || '<p class="why center">No XP for this one.</p>'}
+    ${
+      mine
+        .map((e) => `<p class="center"><b>${esc(e.label)}</b>: ${esc(X.breakdown(e, fmtXp))}</p>${e.timing && e.kind === 'gym' ? `<p class="why center">${esc(e.timing)}</p>` : ''}`)
+        .join('') || (fresh.length ? '' : '<p class="why center">No XP for this one.</p>')
+    }
+    ${
+      fresh.length
+        ? `<div class="fc-list">${fresh
+            .map((a) => `<div class="fc-ach">${badgeHtml(a, 'sm')}<span><b>${esc(a.def.name)}</b><br><span class="why">${a.tier.name} achievement · +${fmtXp(a.xp)} XP</span></span></div>`)
+            .join('')}</div>`
+        : ''
+    }
+    ${
+      records.length
+        ? `<div class="fc-rec"><div class="glabel">New records</div>${records
+            .map((r) => `<p>${esc(L.LIFT_BY_ID[r.lift].short)} <b>${kg(r.weight)} kg</b> — ${andList(r.reps)} rep${r.reps.length > 1 || r.reps[0] > 1 ? 's' : ''} <span class="muted">(was ${wasTxt(r.prev)})</span></p>`)
+            .join('')}</div>`
+        : ''
+    }
     ${li.level > beforeLv ? `<p class="center levelup">Level up! ${beforeLv} → ${li.level}</p>` : ''}
     <p class="center">Level ${li.level} · ${bi.belt.name} belt, ${bi.stripes} stripe${bi.stripes === 1 ? '' : 's'}</p>
     ${xpBar(li.pct)}
-    <p class="calc center">${bi.toNextStripe != null ? `${fmtXp(bi.toNextStripe)} XP to the next stripe` : li.to ? `${fmtXp(li.toNext)} XP to level ${li.level + 1}` : ''}</p>`;
+    <p class="calc center">${bi.toNextStripe != null ? `${fmtXp(bi.toNextStripe)} XP to the next stripe` : li.to ? `${fmtXp(li.toNext)} XP to level ${li.level + 1}` : ''}</p>
+    ${
+      near.length
+        ? `<div class="fc-near"><div class="glabel">Closest achievements</div>${near
+            .map((a) => `<div class="fc-near-row"><span>${esc(a.def.name)}</span><span class="muted">${Math.floor(a.pct * 100)}%</span></div>${xpBar(a.pct)}`)
+            .join('')}</div>`
+        : ''
+    }`;
+}
+
+// ---------------------------------------------------------------- achievements (game layer)
+
+const CAT_ICON = {
+  ratio: '<path d="M12 4v15M7 19.5h10M5 7.5h14"/><path d="M5 7.5 2.5 13h5zM19 7.5 16.5 13h5z"/>',
+  plates: '<circle cx="12" cy="12" r="8.5"/><circle cx="12" cy="12" r="2.5"/>',
+  total: '<path d="M2.5 12h19M6 8v8M9 6v12M15 6v12M18 8v8"/>',
+  program: '<path d="M6 21V4h11l-2.5 4 2.5 4H6"/>',
+  consistency: '<rect x="4" y="5.5" width="16" height="14.5" rx="2"/><path d="M4 10.5h16M9 3.5v4M15 3.5v4"/>',
+  discipline: '<path d="M12 3.5 19 6.5v5.5c0 4.3-2.9 7.3-7 8.8-4.1-1.5-7-4.5-7-8.8V6.5z"/>',
+  pullups: '<path d="M3 4h18M8 4v4.5M16 4v4.5"/><circle cx="12" cy="10.5" r="2"/><path d="M12 12.5v5M9.5 21l2.5-3.5 2.5 3.5"/>',
+  kettlebell: '<path d="M8.5 11V8.5a3.5 3.5 0 0 1 7 0V11"/><circle cx="12" cy="15" r="5.5"/>',
+  skills: '<circle cx="12" cy="4.5" r="2"/><path d="M12 7v7M7.5 10h9M12 14l-4 6.5M12 14l4 6.5"/>',
+  endurance: '<path d="M4 19c3.5 0 4.5-3.5 6.5-7S14 5 17 5h3"/><circle cx="4" cy="19" r="1.2"/><circle cx="20" cy="5" r="1.2"/>',
+  tonnage: '<path d="M7.5 9h9l3 11h-15z"/><circle cx="12" cy="6" r="2.5"/>',
+  habits: '<path d="M5 12.5 9.5 17 19 7"/>',
+  hidden: '<path d="m12 3.5 2.6 5.4 5.9.8-4.3 4.1 1 5.8-5.2-2.8-5.2 2.8 1-5.8-4.3-4.1 5.9-.8z"/>',
+};
+
+function badgeHtml(a, size = '') {
+  const label = `${a.tier.name} badge: ${a.def.name}${a.earned ? '' : ', not earned yet'}`;
+  return `<span class="ach-badge t-${a.tier.id} ${a.earned ? '' : 'locked'} ${size}" role="img" aria-label="${esc(label)}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${
+    CAT_ICON[a.def.cat] || CAT_ICON.hidden
+  }</svg></span>`;
+}
+
+function achRow(a, compact) {
+  const tierLine = `<span class="ach-tier t-${a.tier.id}">${a.tier.name} · ${fmtXp(a.xp)} XP</span>`;
+  // Notes starting with a lowercase word continue the progress text ("90 / 140 kg"); others go on their own line.
+  const inline = a.note && /^[a-z]/.test(a.note);
+  const state = a.earned
+    ? `<p class="ach-earned">✓ Earned ${fmtDate(a.earned.date, true)}</p>`
+    : `${xpBar(a.pct)}<p class="calc">${esc(a.text)}${inline ? ` ${esc(a.note)}` : ''} — ${Math.floor(a.pct * 100)}%${
+        a.note && !inline ? `<br><span class="muted">${esc(a.note)}</span>` : ''
+      }</p>`;
+  return `<div class="ach-row ${a.earned ? 'done' : ''}">${badgeHtml(a)}
+    <div class="ach-body"><div class="ach-top"><span class="ach-name">${esc(a.def.name)}</span>${tierLine}</div>
+    ${compact ? '' : `<p class="why">${esc(a.def.desc)}</p>`}
+    ${state}</div></div>`;
+}
+
+function achCounts(list) {
+  const shown = list.filter((a) => !a.def.hidden || a.earned);
+  const done = list.filter((a) => a.earned);
+  return { done: done.length, of: shown.length, xp: done.reduce((s, a) => s + a.xp, 0) };
+}
+
+function achievementsCard(list) {
+  const c = achCounts(list);
+  const latest = list
+    .filter((a) => a.earned)
+    .sort((x, y) => Date.parse(y.earned.date) - Date.parse(x.earned.date))
+    .slice(0, 8);
+  const near = A.closest(list);
+  return `<section class="card">
+    <div class="card-head"><h3>Achievements</h3><span class="muted small">${c.done} of ${c.of} · ${fmtXp(c.xp)} XP</span></div>
+    ${latest.length ? `<div class="badge-row">${latest.map((a) => badgeHtml(a)).join('')}</div>` : '<p class="why">Badges you earn show up here.</p>'}
+    ${near.length ? `<div class="glabel">Closest</div><div class="ach-list">${near.map((a) => achRow(a, true)).join('')}</div>` : ''}
+    <button class="btn block" data-action="tab" data-v="achievements">All achievements ›</button>
+  </section>`;
+}
+
+function viewAchievements() {
+  const list = X.xpLedger(S.workouts, S.settings).achievements;
+  const c = achCounts(list);
+  const groups = A.groupByCategory(A.sortAndFilter(list, S.achSort, S.achFilter));
+  const hiddenLeft = list.some((a) => a.def.hidden && !a.earned);
+  const body =
+    groups
+      .map((g) => {
+        const inCat = list.filter((a) => a.def.cat === g.cat.id && (!a.def.hidden || a.earned));
+        return `<section class="card"><div class="card-head"><h3>${esc(g.cat.name)}</h3><span class="muted small">${inCat.filter((a) => a.earned).length} of ${inCat.length}</span></div>
+          <div class="ach-list">${g.items.map((a) => achRow(a)).join('')}</div></section>`;
+      })
+      .join('') || `<p class="muted center">${S.achFilter === 'done' ? 'Nothing earned yet — your first badges are close.' : 'All earned!'}</p>`;
+  return `<header class="top bar">
+      <button class="btn ghost" data-action="tab" data-v="profile">‹ Profile</button>
+      <div class="title"><div class="t">Achievements</div><div class="sub">${c.done} of ${c.of} earned · ${fmtXp(c.xp)} XP</div></div>
+      <span style="width:60px"></span>
+    </header>
+    <main class="wrap">
+      ${segBtns('achFilter', [['all', 'All'], ['done', 'Achieved'], ['todo', 'Not yet']])}
+      ${segBtns('achSort', [['easy', 'Easiest first'], ['hard', 'Hardest first'], ['close', 'Closest first']])}
+      ${body}
+      ${hiddenLeft ? '<p class="why center">Some achievements are hidden. They show up once you earn them.</p>' : ''}
+      <p class="why center">Everything here is worked out from your log: edit or delete a workout and it updates.</p>
+    </main>`;
 }
 
 // ---------------------------------------------------------------- bodyweight
@@ -753,15 +898,22 @@ async function saveBodyweight() {
     b.createdAt = Date.now();
   } else b.updatedAt = Date.now();
   for (const k of Object.keys(b)) if (k.startsWith('_')) delete b[k];
-  const before = gameOn() ? X.xpLedger(S.workouts, S.settings).total : 0;
+  const before = editing ? null : xpSnapshot();
   if (editing) S.workouts = S.workouts.map((x) => (x.id === b.id ? b : x));
   else S.workouts.push(b);
   await saveWorkouts();
   const back = editing ? 'history' : S.bwBack === 'progress' ? 'progress' : 'home';
   S.bw = null;
   go(back);
-  const gained = gameOn() && !editing ? X.xpLedger(S.workouts, S.settings).total - before : 0;
-  toast(`Bodyweight saved${gained > 0 ? ` · +${fmtXp(gained)} XP` : ''}`);
+  let extra = '';
+  if (before) {
+    const led = X.xpLedger(S.workouts, S.settings);
+    const gained = led.total - before.total;
+    const fresh = led.achievements.filter((a) => a.earned && !before.ach.has(a.def.id)).length;
+    if (gained > 0) extra += ` · +${fmtXp(gained)} XP`;
+    if (fresh) extra += ` · ${fresh} achievement${fresh > 1 ? 's' : ''} earned`;
+  }
+  toast(`Bodyweight saved${extra}`);
 }
 
 // ---------------------------------------------------------------- workout logging
@@ -1049,7 +1201,7 @@ async function finishWorkout() {
   w.extras = (w.extras || []).filter((x) => (x.name || '').trim() || x.sets.length);
   for (const k of Object.keys(w)) if (k.startsWith('_')) delete w[k];
 
-  const before = gameOn() ? X.xpLedger(S.workouts, S.settings).total : 0;
+  const before = editing ? null : xpSnapshot();
   if (editing) S.workouts = S.workouts.map((x) => (x.id === w.id ? w : x));
   else S.workouts.push(w);
   await saveWorkouts();
@@ -1298,7 +1450,30 @@ function viewHistory() {
     })
     .join('');
   return `<header class="top"><h1>History</h1></header>
-    <main class="wrap">${rows || '<p class="muted center">No workouts yet. Finished workouts show up here — tap one to see or edit it.</p>'}</main>`;
+    <main class="wrap">${thenVsNowCard()}${rows || '<p class="muted center">No workouts yet. Finished workouts show up here — tap one to see or edit it.</p>'}</main>`;
+}
+
+function thenVsNowCard() {
+  const t = A.thenVsNow(S.workouts);
+  if (!t.lifts.length && !t.bw) return '';
+  const d = (iso) => new Date(iso).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
+  // Lifts going up is shown in green; bodyweight change is shown neutral.
+  const diff = (x, unit, colour = true) =>
+    x === 0 ? `<span class="tvn-diff">±0 ${unit}</span>` : `<span class="tvn-diff ${colour && x > 0 ? 'up' : ''}">${x > 0 ? '+' : '−'}${kg(Math.abs(x))} ${unit}</span>`;
+  const lifts = t.lifts
+    .map(
+      (l) => `<div class="tvn-row"><div class="tvn-top"><span class="lift-name">${esc(liftName(l.lift))}</span>${diff(l.diff, 'kg')}</div>
+        <div class="tvn-nums">${kg(l.then.weight)} kg × ${l.then.reps} <span class="muted">(${d(l.then.date)})</span> → <b>${kg(l.now.weight)} kg × ${l.now.reps}</b> <span class="muted">(${d(l.now.date)})</span></div></div>`
+    )
+    .join('');
+  const bw = t.bw
+    ? `<div class="tvn-row"><div class="tvn-top"><span class="lift-name">Bodyweight</span>${t.bw.count > 1 ? diff(t.bw.diff, 'kg', false) : ''}</div>
+        <div class="tvn-nums">${B.roundBw(t.bw.then.kg).toFixed(1)} kg <span class="muted">(${d(t.bw.then.date)})</span>${
+          t.bw.count > 1 ? ` → <b>${B.roundBw(t.bw.now.kg).toFixed(1)} kg</b> <span class="muted">(${d(t.bw.now.date)})</span>` : ''
+        }</div></div>`
+    : '';
+  return `<section class="card tvn"><h3>Then vs now</h3>${lifts}${bw}
+    <p class="why">Your first logged top set → your best set ever (exact logged numbers). Bodyweight: first → latest entry.</p></section>`;
 }
 
 function openHistory(id) {
@@ -1437,6 +1612,22 @@ function progressGym() {
     <section class="card"><h3>1RMs</h3>${listTable(rms, '1RMs from the 3–5 block (entered and tested) will be listed here.')}</section>`;
 }
 
+function progressRecords() {
+  const wall = A.recordWall(S.workouts);
+  const d = (iso) => new Date(iso).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: '2-digit' });
+  const cell = (r) => (r ? `<td><b>${kg(r.weight)}</b><small>${d(r.date)}</small></td>` : '<td class="muted">–</td>');
+  const any = L.LIFTS.some((l) => wall[l.id][1]);
+  return `<section class="card"><h3>Record wall (kg)</h3>
+      ${
+        any
+          ? `<table class="rwall"><thead><tr><th></th>${A.RECORD_REPS.map((r) => `<th>${r} rep${r > 1 ? 's' : ''}</th>`).join('')}</tr></thead>
+        <tbody>${L.LIFTS.map((l) => `<tr><th>${esc(l.short)}</th>${A.RECORD_REPS.map((r) => cell(wall[l.id][r])).join('')}</tr>`).join('')}</tbody></table>`
+          : '<p class="muted">Your records show up here after your first gym session.</p>'
+      }
+      <p class="why">Best weight for a set of at least 1, 3 or 5 clean reps: ticked sets and clean 1RM attempts, exact logged weights, with the first day you lifted it.</p>
+    </section>`;
+}
+
 function progressHome() {
   const moves = H.loggedMoves(S.workouts);
   if (!moves.length) return '<section class="card"><p class="muted">Home movements you log will show up here.</p></section>';
@@ -1490,10 +1681,18 @@ function viewProgress() {
   CHARTS.clear();
   const area = S.progressArea;
   const body =
-    area === 'home' ? progressHome() : area === 'pullups' ? progressPullups() : area === 'body' ? progressBody() : progressGym();
+    area === 'home'
+      ? progressHome()
+      : area === 'pullups'
+        ? progressPullups()
+        : area === 'body'
+          ? progressBody()
+          : area === 'records'
+            ? progressRecords()
+            : progressGym();
   return `<header class="top"><h1>Progress</h1></header>
     <main class="wrap">
-      ${segBtns('progressArea', [['gym', 'Gym'], ['home', 'Home'], ['pullups', 'Pull-ups'], ['body', 'Body']])}
+      ${segBtns('progressArea', [['gym', 'Gym'], ['records', 'Records'], ['home', 'Home'], ['pullups', 'Pull-ups'], ['body', 'Body']])}
       ${body}
     </main>`;
 }
@@ -1594,7 +1793,7 @@ function viewSettings() {
       <section class="card">
         <h3>Game mode</h3>
         ${seg('set-game', [['on', 'On'], ['off', 'Off']], gameOn() ? 'on' : 'off')}
-        <p class="why">XP, levels, belts, the Profile tab and the card after each session. Off = a plain training log. Your XP is always worked out from your log, so nothing is lost when you switch.</p>
+        <p class="why">XP, levels, belts, achievements, the Profile tab and the card after each session. Off = a plain training log (records and "Then vs now" stay). Your XP and achievements are always worked out from your log, so nothing is lost when you switch.</p>
         ${gameOn() ? `<label class="lbl" for="pname">Your name (Profile)</label><input id="pname" type="text" data-name value="${esc(st.name || '')}" placeholder="e.g. Alex">` : ''}
       </section>
       <section class="card">
@@ -2033,7 +2232,9 @@ document.addEventListener('click', async (ev) => {
     case 'pus-save': {
       const u = S.puSetup;
       if (S.settings.pullups && !confirm('Start the pull-up program again from this max? Your logged pull-ups are kept.')) return;
-      S.settings.pullups = { max: u.max, kg: u.kg || 0, at: new Date().toISOString() };
+      const prev = S.settings.pullups;
+      const first = prev ? prev.first || { max: prev.max, kg: prev.kg || 0, at: prev.at } : null;
+      S.settings.pullups = { max: u.max, kg: u.kg || 0, at: new Date().toISOString(), ...(first ? { first } : {}) };
       await saveSettings();
       // A home session waiting for the setup gets today's pull-ups now.
       if (S.home) {
@@ -2320,6 +2521,19 @@ document.addEventListener('change', async (ev) => {
       S.bw.date = iso;
       S.bw._dateTouched = true;
     }
+    return;
+  }
+  if (el.dataset.hdur) {
+    const [i, part] = el.dataset.hdur.split('.');
+    const it = S.home.items[+i];
+    const box = (p) => $app.querySelector(`[data-hdur="${i}.${p}"]`);
+    const val = (p) => Math.max(0, Math.floor(num(p === part ? el.value : box(p)?.value) || 0));
+    const total = val('m') * 60 + val('s');
+    if (total > 0) it.durationSec = total;
+    else delete it.durationSec;
+    if (box('m')) box('m').value = total > 0 ? Math.floor(total / 60) : '';
+    if (box('s')) box('s').value = total > 0 ? String(total % 60).padStart(2, '0') : '';
+    S.homeDirty = true;
     return;
   }
   if (el.matches('[data-homedate]')) {

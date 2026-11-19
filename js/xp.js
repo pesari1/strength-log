@@ -1,4 +1,5 @@
-// Strength Log — game layer: XP, levels (Old School RuneScape curve), belts and stripes.
+// Strength Log — game layer: XP, levels (Old School RuneScape curve), belts and stripes,
+// plus the XP from achievements (js/achievements.js).
 // Pure functions. Everything is calculated from the log every time — no stored totals —
 // so editing or deleting a workout recalculates XP, level, belt and streak.
 // Nothing here is read by the gym plan.
@@ -7,6 +8,7 @@ import * as L from './logic.js';
 import { homeItems } from './home.js';
 import { pullupRecords, pullupState } from './pullups.js';
 import { bwEntries, BW_EVERY_DAYS } from './body.js';
+import { gymTimeline, achievementList } from './achievements.js';
 
 export const XP = {
   gym: 4000, // any gym session (volume, heavy, unload, 3–5)
@@ -133,41 +135,19 @@ function gymMilestones(workouts, settings) {
 }
 
 /** Every XP entry from the log, oldest first, plus totals and the current on-time streak.
- *  Entry: { key, refId, date, kind, label, base, bonus, streak, timing, milestones, total } */
-export function xpLedger(workouts, settings) {
+ *  Entry: { key, refId, date, kind, label, base, bonus, streak, timing, milestones, total }
+ *  kind: gym | home | pullups | bw | ach. Also returns the achievement list it used. */
+export function xpLedger(workouts, settings, opts = {}) {
   const entries = [];
   const ws = (workouts || []).filter(Boolean);
 
   // Gym sessions, with the on-time streak bonus.
   const milestones = gymMilestones(ws, settings);
-  let streak = 0;
-  let prev = null;
-  for (const w of L.sortByDate(ws.filter((x) => x.kind === 'gym'))) {
+  const timeline = gymTimeline(ws, STREAK_STEP, STREAK_CAP);
+  for (const t of timeline) {
+    const w = t.w;
     const base = (w.lifts || []).some((e) => e.type === 'test') ? XP.gymTest : XP.gym;
-    let pct = 0;
-    let timing;
-    if (!prev) {
-      streak += 1;
-      pct = Math.min(streak, STREAK_CAP) * STREAK_STEP;
-      timing = 'first session';
-    } else {
-      const due = L.addDays(prev.date, L.REST_DAYS + 1);
-      const late = L.daysBetween(due, w.date);
-      if (late === 0) {
-        streak += 1;
-        pct = Math.min(streak, STREAK_CAP) * STREAK_STEP;
-        timing = 'on time';
-      } else if (late === 1) {
-        pct = (Math.min(streak, STREAK_CAP) * STREAK_STEP) / 2;
-        timing = '1 day late — half bonus, streak kept';
-      } else if (late >= 2) {
-        streak = 0;
-        timing = `${late} days late — streak reset`;
-      } else {
-        timing = 'trained on a rest day — no bonus, streak paused';
-      }
-    }
-    const bonus = Math.round(base * pct);
+    const bonus = Math.round(base * t.pct);
     const ms = milestones.get(w.id) || [];
     entries.push({
       key: 'gym:' + w.id,
@@ -177,14 +157,14 @@ export function xpLedger(workouts, settings) {
       label: L.workoutTitle(w),
       base,
       bonus,
-      bonusPct: pct,
-      streak,
-      timing,
+      bonusPct: t.pct,
+      streak: t.streak,
+      timing: t.timing,
       milestones: ms,
       total: base + bonus + sum(ms),
     });
-    prev = w;
   }
+  const streak = timeline.length ? timeline[timeline.length - 1].streak : 0;
 
   // Home sessions: 1st of the day 1,200, 2nd 600, 3rd and later 0.
   const perDay = new Map();
@@ -239,9 +219,28 @@ export function xpLedger(workouts, settings) {
     });
   }
 
+  // Achievements: their XP counts on the day of the entry that earned them.
+  const achievements = opts.achievements !== false ? achievementList(ws, settings, opts.now) : [];
+  for (const a of achievements) {
+    if (!a.earned) continue;
+    entries.push({
+      key: 'ach:' + a.def.id,
+      refId: a.earned.refId,
+      date: a.earned.date,
+      kind: 'ach',
+      achId: a.def.id,
+      tier: a.tier.id,
+      label: `${a.tier.name} achievement: ${a.def.name}`,
+      base: a.xp,
+      bonus: 0,
+      milestones: [],
+      total: a.xp,
+    });
+  }
+
   entries.sort((a, b) => Date.parse(a.date) - Date.parse(b.date) || a.key.localeCompare(b.key));
   const total = entries.reduce((s, e) => s + e.total, 0);
-  return { entries, total, streak, bonusPct: Math.min(streak, STREAK_CAP) * STREAK_STEP };
+  return { entries, total, streak, bonusPct: Math.min(streak, STREAK_CAP) * STREAK_STEP, achievements };
 }
 
 /** XP entries for one workout (a gym workout can also hold that day's pull-ups). */

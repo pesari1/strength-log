@@ -914,7 +914,7 @@ export function editWeight(settings, workouts, liftId, field, value, now = new D
 // =====================================================================================
 
 export function makeBackup(settings, workouts) {
-  return { app: 'strength-log', version: 5, exportedAt: new Date().toISOString(), settings, workouts };
+  return { app: 'strength-log', version: 6, exportedAt: new Date().toISOString(), settings, workouts };
 }
 
 export function readBackup(obj) {

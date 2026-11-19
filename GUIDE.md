@@ -1,15 +1,16 @@
-# Strength Log — your guide (version 5)
+# Strength Log — your guide (version 6)
 
 Strength Log is a workout app for your iPhone. It lives on your phone, works with no internet,
 and tells you what your next gym session is, when it's due, and what weights to use.
 It rotates between two training blocks: a **5×5 block** and a **3–5 block**.
 Alongside the gym plan it logs **home sessions** (kettlebell, bodyweight, custom), runs
 Pavel's **Fighter Pullup Program**, and keeps a **weekly bodyweight log**. None of those ever
-changes the gym plan. An optional **game layer** (XP, levels, belts) lives on the Profile tab.
+changes the gym plan. An optional **game layer** (XP, levels, belts and achievements) lives on the
+Profile tab. Your **records** and a **Then vs now** card show how far you've come.
 
 ---
 
-## Getting version 5 onto your iPhone (if you already have an older version)
+## Getting version 6 onto your iPhone (if you already have an older version)
 
 1. On your iPhone, make a backup first: **Settings → Export backup file → Save to Files**.
 2. On your computer, go to <https://github.com> and open your **strength-log** repository.
@@ -21,11 +22,11 @@ changes the gym plan. An optional **game layer** (XP, levels, belts) lives on th
    A banner says **"A new version of the app is ready"** → tap **Update now**.
    - No banner? Swipe the app away completely (swipe up from the bottom and flick it off the top),
      open it again and wait a few seconds. Repeat once if needed.
-7. Check it worked: **Settings** → bottom of the page says **Strength Log 5.0.1**, and there is a
-   **Profile** tab at the bottom.
+7. Check it worked: **Settings** → bottom of the page says **Strength Log 6.0.0**, and
+   **Profile** has an **Achievements** card.
 
-Your logged workouts stay exactly as they are, and the XP for everything you've already logged is
-worked out straight away.
+Your logged workouts stay exactly as they are. Achievements, records and their XP for everything
+you've already logged are worked out straight away.
 
 ---
 
@@ -153,6 +154,10 @@ session can combine several presets (e.g. pull-up ladder + press ladders, or S&S
 - **Pull-ups**: today's pull-up session from your program (see below).
 - **Custom**: any movement name, sets × reps, and a weight if you want.
 
+**Swings and get-ups** have an optional **Time** box (minutes : seconds). Fill it in only when you
+test Pavel's Simple standard (100 one-arm swings in 5:00, 10 get-ups in 10:00); it's what the
+Simple and Sinister achievements check. The time isn't copied to your next session.
+
 Every movement remembers what you did last time and fills it in. Use the **Sets** and **Reps** buttons
 to change the plan. Tap a set to change or delete it.
 
@@ -238,17 +243,70 @@ level 99 = 13,034,431 XP); XP keeps counting after 99.
 bonus, and your last 20 XP entries with their breakdown. After you finish a session, a small card
 shows the XP you earned and your level progress (tap to close).
 
-**Game mode** (Settings): off hides the Profile tab and the after-session card, so the app is a plain
-training log. Your name for the Profile is set there too.
+**Game mode** (Settings): off hides the Profile tab (with achievements) and the after-session card,
+so the app is a plain training log. Records and "Then vs now" stay. Your name for the Profile is set
+there too.
+
+### Achievements (Profile tab)
+
+91 achievements in 13 groups, each with a **badge** and **XP**: Bronze 1,000 · Silver 2,500 ·
+Gold 5,000 · Platinum 10,000 · Legendary 20,000. Like XP, they're worked out from your log every
+time (also for workouts logged before v6): edit or delete a workout and they update.
+
+- **Profile** shows your latest badges, how many you have, and the **3 closest** ones with a progress
+  bar (e.g. "Bench 2 plates (100 kg): 97.5 / 100 kg — 97%").
+- **All achievements** lists every one, grouped by category. Sort: **Easiest first** (Bronze →
+  Legendary), **Hardest first**, **Closest first**. Filter: **All · Achieved · Not yet**.
+- **Hidden** achievements only appear once you earn them.
+
+How they're counted:
+- **Lifts** count with any number of clean reps at the exact logged weight: ticked sets (with 1+ reps)
+  and clean 1RM attempts.
+- **Bodyweight ratios** use your bodyweight entry closest to the day of the lift. With no entry yet
+  they wait until you log one.
+- **Plate clubs**: 20 kg plates per side on a 20 kg bar (2 plates = 100 kg). **Total clubs**: best
+  squat + best bench + best deadlift.
+- **Program milestones**: first full 6-session cycle; first 5×5 block finished; first 3–5 block
+  finished (all four lifts tested); **New 1RM** per lift = a 1RM test that beats the 1RM you went in
+  with; **Perfect cycle** = all 6 sessions of a 5×5 cycle on their due date.
+- **Consistency**: gym sessions (10 → 500); best on-time streak (6 → 48); **No Winter Break** = 8+
+  gym sessions in each of November, December, January and February of one winter; **Year of Iron** =
+  150 gym sessions within any 12 months.
+- **Pavel discipline**: **Clean Block** = a finished block where every set was ticked with all its reps;
+  **Iron Patience** = missed reps at the same weight 3 sessions in a row (same lift, same kind of
+  day, e.g. volume), then all reps at that weight or heavier; **Rest Is Training** = a finished block
+  with no session on a rest day.
+- **Pull-ups**: program finished (25 ladders, then a max test); **Double your max** = twice the max
+  you first set the program up with, in one set; strict reps in one set; weighted singles.
+- **Kettlebell**: press ladders 5 × 1-2-3-4-5 per arm with 20 kg (or heavier) and with 32 kg; first
+  32 kg press; 32 kg × 5; **Simple** / **Sinister** with the time box (see Home sessions), all in
+  one home session for "Pavel's Simple" (32 kg) and "Sinister" (48 kg); lifetime swings and get-ups.
+- **Bodyweight skills**: only pistols and one-arm push-ups logged **without a variation** count as
+  full ones ("to box" etc. don't).
+- **Endurance**: lifetime distance of the warm-up runs logged with gym sessions.
+- **Tonnage**: weight × reps of every ticked gym set, clean 1RM attempt and extra exercise.
+- **Habits**: bodyweight logged in 12 Monday–Sunday weeks in a row; "Ate before training?" = Yes at
+  10 gym sessions in a row.
+- **Hidden**: two of them. You'll find out.
+
+### After a session
+
+The card after finishing a session shows the XP you earned, any **new achievements** (with their
+badge), any **new records**, your level progress and the **3 closest achievements**. Tap to close.
+A bodyweight entry shows its XP and any new achievements in the message at the top instead.
 
 ### Other screens
 
-**History**: every workout, home session and bodyweight entry, newest first; gym workouts are tagged
-with their block (e.g. "3–5 block 1"). Tap one to see, change or delete it. Everything recalculates.
+**History**: at the top, **Then vs now**: per lift, your first logged top set → your best set ever
+(e.g. "100 kg × 5 → 120 kg × 3, +20 kg"), and your first → latest bodyweight. Below it every
+workout, home session and bodyweight entry, newest first; gym workouts are tagged with their block
+(e.g. "3–5 block 1"). Tap one to see, change or delete it. Everything recalculates.
 
-**Progress** has four parts:
+**Progress** has five parts:
 - **Gym**: per lift, your top set over time (all, or only volume / heavy / unload / 3–5 days),
   best sets, and your **1RMs** (entered and tested).
+- **Records**: the **record wall**: per lift, your best weight for a set of at least 1, 3 and 5 clean
+  reps, with the day you first lifted it.
 - **Home**: per movement, charts over time (swings & get-ups: bell and reps; press ladders: reps per
   arm and bell; bodyweight: best set; plank: longest hold) and your bests.
 - **Pull-ups**: your program, total reps per session, and your maxes.
@@ -287,7 +345,7 @@ Your workouts are stored **only on your iPhone**. If the phone is lost or reset,
 
 1. Ask Claude for the change. Claude edits the files in **Documents → strength-log** and **raises the
    version number** (in `sw.js` and `js/app.js`). That number change tells your iPhone there's an update.
-2. Upload the files to GitHub exactly as in "Getting version 5 onto your iPhone" at the top (steps 2–5).
+2. Upload the files to GitHub exactly as in "Getting version 6 onto your iPhone" at the top (steps 2–5).
 3. Open the app on your iPhone (with internet) and tap **Update now** on the banner.
 
 Your workouts are not touched by updates.
@@ -317,15 +375,24 @@ Your workouts are not touched by updates.
   sessions (first per calendar day, logged after `settings.pullups.at`). `PULLUP_3RM_TABLE` holds the
   published 3RM program (12 entries, `null` = day off), as provided by the user.
 - **Bodyweight** (`js/body.js`): `{ kind: 'bw', date, kg }` entries in the same workouts list.
-- **Game layer** (`js/xp.js`): `xpLedger()` derives every XP entry from the log (no stored totals);
+- **Achievements** (`js/achievements.js`): `ACHIEVEMENTS` lists every definition
+  `{ id, cat, tier, name, desc, hidden?, eval(F) }`; `achievementList()` builds the facts from the log
+  once and evaluates each (earned `{ date, refId }`, `pct`, `text`, `note`). `gymTimeline()` holds the
+  on-time rules shared with XP. Records (`recordWall`, `newRecords`) and `thenVsNow` live there too.
+  Swings/get-ups items may carry `durationSec` (Simple standard). `settings.pullups.first` keeps the
+  first setup when the program is restarted ("Double your max").
+- **Game layer** (`js/xp.js`): `xpLedger()` derives every XP entry from the log (no stored totals),
+  including one `kind: 'ach'` entry per earned achievement;
   `LEVEL_XP` is the OSRS table; `beltInfo()` gives belt, stripes and degrees. `settings.gameMode`
   hides it; `BADGE_99_SRC` in app.js points to the level-99 badge image (`icons/badge99.webp`).
 - Nothing in home.js, pullups.js, body.js or xp.js is read by the gym logic.
 - Tests: `node --test` (`tests/logic.test.js` for the 5×5 rules, rest days and data; `tests/blocks.test.js`
   for blocks and the 3–5 method; `tests/v4.test.js` for home sessions and pull-ups; `tests/v5.test.js`
-  for XP, levels, belts, bodyweight and the v4 → v5 upgrade).
+  for XP, levels, belts, bodyweight and the v4 → v5 upgrade; `tests/v6.test.js` for achievements,
+  records, then vs now and the v5 → v6 upgrade).
 - Offline check: `node tools/offline-check.mjs` (needs Edge or Chrome).
 - Upgrade check: `node tools/upgrade-check.mjs` fills the app's storage with realistic older data, starts
   the current app on it and checks every record is kept unchanged. Run it before every release.
 - Run locally: `node tools/serve.mjs` → <http://localhost:8080/>.
-- Releasing: bump `CACHE_VERSION` in `sw.js` and `APP_VERSION` in `js/app.js`. If you add a file, add it to `ASSETS` in `sw.js`.
+- Releasing: bump `CACHE_VERSION` in `sw.js` and `APP_VERSION` in `js/app.js`. If you add a file, add it to `ASSETS` in `sw.js`
+  (and update the file count in `tools/offline-check.mjs`).

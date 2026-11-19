@@ -203,6 +203,7 @@ export function pullupState(workouts, settings, now = new Date(), opts = {}) {
     dayOff,
     doneToday,
     progress,
+    done: st.done, // ladders completed toward the 25 (5RM / 15RM programs)
     tests,
     records,
     completions,

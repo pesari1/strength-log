@@ -154,6 +154,11 @@ export function itemTotal(item) {
   return 0;
 }
 
+/** "4:45" for a time in seconds (swings / get-ups time box, for Pavel's Simple standard). */
+export function durText(sec) {
+  return `${Math.floor(sec / 60)}:${String(Math.round(sec % 60)).padStart(2, '0')}`;
+}
+
 /** Short text for history lists. */
 export function itemSummary(item) {
   const m = MOVES[item.move];
@@ -164,7 +169,7 @@ export function itemSummary(item) {
   if (m.kind === 'ladders') return `Press ${ladderText(item.ladders)} with ${item.kg} kg`;
   if (m.kind === 'secs') return `Plank ${item.sets.map((s) => s.secs + 's').join(', ')}`;
   if (m.kind === 'pullups') return '';
-  if (m.total) return `${name} ${itemTotal(item)}${kgTxt}`;
+  if (m.total) return `${name} ${itemTotal(item)}${kgTxt}${item.durationSec > 0 ? ` in ${durText(item.durationSec)}` : ''}`;
   const v = item.variation ? ` (${item.variation})` : '';
   return `${name}${v} ${item.sets.map((s) => s.reps).join(',')}${kgTxt}`;
 }

@@ -235,7 +235,7 @@ test('6. editing or deleting a workout recalculates XP, level, belt and streak',
   // Delete one → its XP is gone.
   W.splice(1, 1);
   const del = xpLedger(W, s);
-  assert.equal(del.entries.length, 3);
+  assert.equal(del.entries.filter((e) => e.kind !== 'ach').length, 3); // v6 adds achievement entries
   assert.equal(levelForXp(del.total), levelInfo(del.total).level);
   assert.equal(beltInfo(del.total).belt.id, 'white');
 });
